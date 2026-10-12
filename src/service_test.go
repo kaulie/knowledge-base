@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -156,6 +157,41 @@ func TestGitRegisterBindParses(t *testing.T) {
 	})
 	if err != nil || len(hits) != 1 {
 		t.Fatalf("search = %+v, %v", hits, err)
+	}
+}
+
+func TestGitPathFromRepoRoot(t *testing.T) {
+	t.Setenv(EnvDataDir, t.TempDir())
+	svc := NewService(NewMemoryStore())
+	origin := initGitOrigin(t, map[string]string{
+		"docs/runtime.md": "# Runtime\n\n## Heartbeat\n\nagents send a heartbeat every tick\n",
+	})
+	for _, path := range []string{"docs/runtime.md", "/docs/runtime.md", "docs/runtime.md/"} {
+		k, err := svc.Register(context.Background(), RegisterRequest{
+			ID: "kn-" + strings.ReplaceAll(path, "/", "_"),
+			Kind: KindSourceCodeRepository, Shape: ShapeFile,
+			Source: Source{Location: origin, Path: path},
+			Bind:   &ContextEntity{Type: EntityProject, ID: "p-" + strings.ReplaceAll(path, "/", "_")},
+		})
+		if err != nil {
+			t.Fatalf("path %q: %v", path, err)
+		}
+		if k.Source.Path != "docs/runtime.md" {
+			t.Fatalf("path %q stored as %q", path, k.Source.Path)
+		}
+		if k.Documents != 1 {
+			t.Fatalf("path %q documents = %d", path, k.Documents)
+		}
+	}
+	if _, err := svc.Register(context.Background(), RegisterRequest{
+		Kind: KindSourceCodeRepository, Source: Source{Location: origin, Path: "../secret"},
+	}); !IsCode(err, ErrInvalidQuery) {
+		t.Fatalf("dot-dot path = %v", err)
+	}
+	if _, err := svc.Register(context.Background(), RegisterRequest{
+		Kind: KindSourceCodeRepository,
+	}); !IsCode(err, ErrInvalidQuery) || err == nil || !strings.Contains(err.Error(), "git repository") {
+		t.Fatalf("missing repo = %v", err)
 	}
 }
 

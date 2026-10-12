@@ -66,6 +66,9 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge,
 		loc = strings.TrimSpace(src.Repository)
 	}
 	if loc == "" {
+		if backend.Kind() == KindSourceCodeRepository {
+			return Knowledge{}, Errorf(ErrInvalidQuery, "git repository is required (source.repository or source.location)")
+		}
 		return Knowledge{}, Errorf(ErrInvalidQuery, "source.location is required")
 	}
 	src.Location = loc
@@ -73,8 +76,12 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge,
 		if strings.TrimSpace(src.Repository) == "" {
 			src.Repository = loc
 		}
-		if shape == ShapeFile && strings.TrimSpace(src.Path) == "" {
-			return Knowledge{}, Errorf(ErrInvalidQuery, "source.path inside the repository is required for shape file")
+		src.Path = gitPathPrefix(src.Path)
+		if !validRepoRelPath(src.Path) {
+			return Knowledge{}, Errorf(ErrInvalidQuery, "source.path is from the repository root (docs/x.md or /docs/x.md); it must stay inside the tree")
+		}
+		if shape == ShapeFile && src.Path == "" {
+			return Knowledge{}, Errorf(ErrInvalidQuery, "source.path from the repository root is required for shape file")
 		}
 	}
 	now := s.now()
@@ -271,6 +278,9 @@ func (s *Service) Sync(ctx context.Context, knowledgeID string) (SyncResult, err
 	root := strings.TrimSpace(mat.Root)
 	if k.Shape == ShapeFile {
 		rel := strings.TrimSpace(k.Source.Path)
+		if k.Kind == KindSourceCodeRepository {
+			rel = gitPathPrefix(rel)
+		}
 		if rel == "" {
 			rel = filepath.Base(strings.TrimSpace(k.Source.Location))
 		}
