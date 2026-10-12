@@ -59,6 +59,27 @@ func TestHTTPAutonomyReadPath(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), created.ID) {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
 	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/contexts/project/project-a/search?q=heartbeat", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "heartbeat") {
+		t.Fatalf("context search: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	put := httptest.NewRequest(http.MethodPut, "/api/knowledge/"+created.ID+"/bindings/organization/org-1", nil)
+	h.ServeHTTP(httptest.NewRecorder(), put)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/contexts/organization/org-1/search?q=heartbeat", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "heartbeat") {
+		t.Fatalf("org search: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/contexts/not-a-type/x/search?q=heartbeat", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad entity type: %d %s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestHTTPHealth(t *testing.T) {

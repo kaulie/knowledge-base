@@ -38,14 +38,15 @@ func TestRegisterSyncBindSearch(t *testing.T) {
 		t.Fatalf("re-sync = %+v, %v", again, err)
 	}
 
-	hits, err := svc.Search(context.Background(), SearchRequest{ProjectID: "project-a", Query: "heartbeat"})
+	projA := ContextEntity{Type: EntityProject, ID: "project-a"}
+	hits, err := svc.Search(context.Background(), SearchRequest{Entity: projA, Query: "heartbeat"})
 	if err != nil || len(hits) != 0 {
 		t.Fatalf("unbound search = %+v, %v", hits, err)
 	}
-	if err := svc.Bind(context.Background(), k.ID, "project-a"); err != nil {
+	if err := svc.Bind(context.Background(), k.ID, projA); err != nil {
 		t.Fatal(err)
 	}
-	hits, err = svc.Search(context.Background(), SearchRequest{ProjectID: "project-a", Query: "heartbeat"})
+	hits, err = svc.Search(context.Background(), SearchRequest{Entity: projA, Query: "heartbeat"})
 	if err != nil || len(hits) != 1 || hits[0].KnowledgeID != k.ID {
 		t.Fatalf("bound search = %+v, %v", hits, err)
 	}
@@ -53,14 +54,25 @@ func TestRegisterSyncBindSearch(t *testing.T) {
 	if err != nil || sec == nil || sec.KnowledgeID != k.ID {
 		t.Fatalf("get section = %+v, %v", sec, err)
 	}
-	hits, err = svc.Search(context.Background(), SearchRequest{ProjectID: "project-b", Query: "heartbeat"})
+	hits, err = svc.Search(context.Background(), SearchRequest{Entity: ContextEntity{Type: EntityProject, ID: "project-b"}, Query: "heartbeat"})
 	if err != nil || len(hits) != 0 {
 		t.Fatalf("other project = %+v, %v", hits, err)
 	}
+	hits, err = svc.Search(context.Background(), SearchRequest{Entity: ContextEntity{Type: EntityOrganization, ID: "project-a"}, Query: "heartbeat"})
+	if err != nil || len(hits) != 0 {
+		t.Fatalf("same id other type = %+v, %v", hits, err)
+	}
 
-	listed, err := svc.ListForProject(context.Background(), "project-a")
+	listed, err := svc.ListForEntity(context.Background(), projA)
 	if err != nil || len(listed) != 1 || listed[0].ID != k.ID {
 		t.Fatalf("list project = %+v, %v", listed, err)
+	}
+	if err := svc.Bind(context.Background(), k.ID, ContextEntity{Type: EntityOrganization, ID: "org-1"}); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = svc.ListForEntity(context.Background(), ContextEntity{Type: EntityOrganization, ID: "org-1"})
+	if err != nil || len(listed) != 1 || listed[0].ID != k.ID {
+		t.Fatalf("list org = %+v, %v", listed, err)
 	}
 }
 
