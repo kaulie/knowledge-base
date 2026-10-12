@@ -50,8 +50,7 @@ type Access struct {
 }
 
 // Knowledge is one registered source (a knowledge_id). Documents and
-// sections belong to it. CONTEXT entities (project, …) bind to it; they
-// do not own it.
+// sections belong to it. CONTEXT entities bind to it; they do not own it.
 type Knowledge struct {
 	ID        string            `json:"id"`
 	Name      string            `json:"name,omitempty"`
