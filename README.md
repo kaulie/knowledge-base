@@ -30,10 +30,28 @@ Autonomy 用手里的 entity 取事实：内部先展开 `{type,id} → [knowled
 ```bash
 go test ./src
 go run ./cmd/knowledge-based
-# KNOWLEDGE_BASE_ADDR=:4360
+# KNOWLEDGE_BASE_ADDR=127.0.0.1:4360
 ```
 
 V1 索引在进程内存里，重启即空。持久化（postgres）与远程连接器后加。
+
+## 服务中心与部署
+
+契约真源是 handler 上的 swag 注解（`cmd/knowledge-based/main.go` + `src/http.go`）。`src/contract_test.go` 保证注解与路由表一一对应。
+
+```
+bash scripts/register-contract.sh
+# SERVICE_NAME=knowledge-base  DEPARTMENT_ID=D0005  INSTANCES=127.0.0.1:4360
+# → 服务中心 :4240
+```
+
+部署平台（`:4220`）绑本服务后走统一发版：
+
+```
+POST /api/deploy-notify  {"serviceId":"knowledge-base","ref":"main"}
+```
+
+平台调仓库根 `build.sh` → `outputs/`（含 `bin/knowledge-based` 与 `scripts/restart.sh`），rsync 到 runtime，再执行 `restartCmd`。监听端口 **4360**。
 
 ## 写路径（登记 / 维护 / 版本）
 

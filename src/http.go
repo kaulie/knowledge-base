@@ -19,24 +19,37 @@ func NewServer(svc *Service) *Server {
 	return &Server{svc: svc}
 }
 
+type httpRoute struct {
+	Pattern string
+	Handler http.HandlerFunc
+}
+
+func (s *Server) routes() []httpRoute {
+	return []httpRoute{
+		{"GET /health", s.handleHealth},
+		{"GET /healthz", s.handleHealthAlias},
+		{"GET /api/backends", s.handleBackends},
+		{"POST /api/knowledge", s.handleRegister},
+		{"GET /api/knowledge", s.handleList},
+		{"GET /api/knowledge/{id}", s.handleGet},
+		{"DELETE /api/knowledge/{id}", s.handleDelete},
+		{"POST /api/knowledge/{id}/sync", s.handleSync},
+		{"GET /api/knowledge/{id}/documents", s.handleDocuments},
+		{"GET /api/knowledge/{id}/bindings", s.handleListBindings},
+		{"PUT /api/knowledge/{id}/bindings/{entityType}/{entityID}", s.handleBind},
+		{"DELETE /api/knowledge/{id}/bindings/{entityType}/{entityID}", s.handleUnbind},
+		{"GET /api/contexts/{entityType}/{entityID}/knowledge", s.handleEntityKnowledge},
+		{"GET /api/contexts/{entityType}/{entityID}/search", s.handleSearch},
+		{"GET /api/sections/{sectionID}", s.handleGetSection},
+		{"GET /", s.handleHome},
+	}
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", s.handleHealth)
-	mux.HandleFunc("GET /healthz", s.handleHealth)
-	mux.HandleFunc("GET /api/backends", s.handleBackends)
-	mux.HandleFunc("POST /api/knowledge", s.handleRegister)
-	mux.HandleFunc("GET /api/knowledge", s.handleList)
-	mux.HandleFunc("GET /api/knowledge/{id}", s.handleGet)
-	mux.HandleFunc("DELETE /api/knowledge/{id}", s.handleDelete)
-	mux.HandleFunc("POST /api/knowledge/{id}/sync", s.handleSync)
-	mux.HandleFunc("GET /api/knowledge/{id}/documents", s.handleDocuments)
-	mux.HandleFunc("GET /api/knowledge/{id}/bindings", s.handleListBindings)
-	mux.HandleFunc("PUT /api/knowledge/{id}/bindings/{entityType}/{entityID}", s.handleBind)
-	mux.HandleFunc("DELETE /api/knowledge/{id}/bindings/{entityType}/{entityID}", s.handleUnbind)
-	mux.HandleFunc("GET /api/contexts/{entityType}/{entityID}/knowledge", s.handleEntityKnowledge)
-	mux.HandleFunc("GET /api/contexts/{entityType}/{entityID}/search", s.handleSearch)
-	mux.HandleFunc("GET /api/sections/{sectionID}", s.handleGetSection)
-	mux.HandleFunc("GET /", s.handleHome)
+	for _, r := range s.routes() {
+		mux.HandleFunc(r.Pattern, r.Handler)
+	}
 	return mux
 }
 
@@ -73,10 +86,29 @@ func writeErr(w http.ResponseWriter, err error) {
 	writeJSON(w, status, errBody{Code: code, Message: msg})
 }
 
+// @Summary  健康检查
+// @Tags     system
+// @Produce  json
+// @Success  200  {object}  map[string]string
+// @Router   /health [get]
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// @Summary  健康检查（/health 的别名）
+// @Tags     system
+// @Produce  json
+// @Success  200  {object}  map[string]string
+// @Router   /healthz [get]
+func (s *Server) handleHealthAlias(w http.ResponseWriter, r *http.Request) {
+	s.handleHealth(w, r)
+}
+
+// @Summary  已实现的 kind+provider
+// @Tags     knowledge
+// @Produce  json
+// @Success  200  {object}  map[string]any
+// @Router   /api/backends [get]
 func (s *Server) handleBackends(w http.ResponseWriter, _ *http.Request) {
 	type info struct {
 		Kind     string `json:"kind"`
@@ -89,6 +121,13 @@ func (s *Server) handleBackends(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"backends": out})
 }
 
+// @Summary  登记一条知识源（可选 bind {type,id}）
+// @Tags     knowledge
+// @Accept   json
+// @Produce  json
+// @Success  201  {object}  Knowledge
+// @Failure  400  {object}  errBody
+// @Router   /api/knowledge [post]
 func (s *Server) handleRegister(w http.ResponseWriter, req *http.Request) {
 	var body RegisterRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
@@ -103,6 +142,13 @@ func (s *Server) handleRegister(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusCreated, k)
 }
 
+// @Summary  列出知识源（可按 entity_type + entity_id 过滤）
+// @Tags     knowledge
+// @Produce  json
+// @Param    entity_type  query  string  false  "CONTEXT entity type"
+// @Param    entity_id    query  string  false  "CONTEXT entity id"
+// @Success  200  {object}  map[string]any
+// @Router   /api/knowledge [get]
 func (s *Server) handleList(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
 	typ := strings.TrimSpace(q.Get("entity_type"))
@@ -129,6 +175,13 @@ func (s *Server) handleList(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"knowledge": out})
 }
 
+// @Summary  一条知识源
+// @Tags     knowledge
+// @Produce  json
+// @Param    id  path  string  true  "knowledge_id"
+// @Success  200  {object}  Knowledge
+// @Failure  404  {object}  errBody
+// @Router   /api/knowledge/{id} [get]
 func (s *Server) handleGet(w http.ResponseWriter, req *http.Request) {
 	k, err := s.svc.Get(req.Context(), req.PathValue("id"))
 	if err != nil {
@@ -138,6 +191,12 @@ func (s *Server) handleGet(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, k)
 }
 
+// @Summary  删除一条知识源
+// @Tags     knowledge
+// @Param    id  path  string  true  "knowledge_id"
+// @Success  204
+// @Failure  404  {object}  errBody
+// @Router   /api/knowledge/{id} [delete]
 func (s *Server) handleDelete(w http.ResponseWriter, req *http.Request) {
 	if err := s.svc.Delete(req.Context(), req.PathValue("id")); err != nil {
 		writeErr(w, err)
@@ -146,6 +205,12 @@ func (s *Server) handleDelete(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// @Summary  同步并重建索引
+// @Tags     knowledge
+// @Produce  json
+// @Param    id  path  string  true  "knowledge_id"
+// @Success  200  {object}  SyncResult
+// @Router   /api/knowledge/{id}/sync [post]
 func (s *Server) handleSync(w http.ResponseWriter, req *http.Request) {
 	out, err := s.svc.Sync(req.Context(), req.PathValue("id"))
 	if err != nil {
@@ -155,6 +220,12 @@ func (s *Server) handleSync(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// @Summary  一条源下的文档
+// @Tags     knowledge
+// @Produce  json
+// @Param    id  path  string  true  "knowledge_id"
+// @Success  200  {object}  map[string]any
+// @Router   /api/knowledge/{id}/documents [get]
 func (s *Server) handleDocuments(w http.ResponseWriter, req *http.Request) {
 	docs, err := s.svc.Documents(req.Context(), req.PathValue("id"))
 	if err != nil {
@@ -164,6 +235,12 @@ func (s *Server) handleDocuments(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"documents": docs})
 }
 
+// @Summary  一条源绑到的 CONTEXT entity
+// @Tags     knowledge
+// @Produce  json
+// @Param    id  path  string  true  "knowledge_id"
+// @Success  200  {object}  map[string]any
+// @Router   /api/knowledge/{id}/bindings [get]
 func (s *Server) handleListBindings(w http.ResponseWriter, req *http.Request) {
 	entities, err := s.svc.Bindings(req.Context(), req.PathValue("id"))
 	if err != nil {
@@ -176,6 +253,14 @@ func (s *Server) handleListBindings(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"bindings": entities})
 }
 
+// @Summary  把知识源绑到一个 CONTEXT entity
+// @Tags     knowledge
+// @Produce  json
+// @Param    id          path  string  true  "knowledge_id"
+// @Param    entityType  path  string  true  "entity type"
+// @Param    entityID    path  string  true  "entity id"
+// @Success  200  {object}  map[string]any
+// @Router   /api/knowledge/{id}/bindings/{entityType}/{entityID} [put]
 func (s *Server) handleBind(w http.ResponseWriter, req *http.Request) {
 	entity, err := ParseEntity(req.PathValue("entityType"), req.PathValue("entityID"))
 	if err != nil {
@@ -189,6 +274,13 @@ func (s *Server) handleBind(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"knowledge_id": req.PathValue("id"), "entity": entity})
 }
 
+// @Summary  解绑一个 CONTEXT entity
+// @Tags     knowledge
+// @Param    id          path  string  true  "knowledge_id"
+// @Param    entityType  path  string  true  "entity type"
+// @Param    entityID    path  string  true  "entity id"
+// @Success  204
+// @Router   /api/knowledge/{id}/bindings/{entityType}/{entityID} [delete]
 func (s *Server) handleUnbind(w http.ResponseWriter, req *http.Request) {
 	entity, err := ParseEntity(req.PathValue("entityType"), req.PathValue("entityID"))
 	if err != nil {
@@ -202,6 +294,13 @@ func (s *Server) handleUnbind(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// @Summary  某个 CONTEXT entity 绑定的知识源（context.list）
+// @Tags     contexts
+// @Produce  json
+// @Param    entityType  path  string  true  "entity type"
+// @Param    entityID    path  string  true  "entity id"
+// @Success  200  {object}  map[string]any
+// @Router   /api/contexts/{entityType}/{entityID}/knowledge [get]
 func (s *Server) handleEntityKnowledge(w http.ResponseWriter, req *http.Request) {
 	entity, err := ParseEntity(req.PathValue("entityType"), req.PathValue("entityID"))
 	if err != nil {
@@ -216,6 +315,15 @@ func (s *Server) handleEntityKnowledge(w http.ResponseWriter, req *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"knowledge": out, "entity": entity})
 }
 
+// @Summary  在某个 CONTEXT entity 的绑定源里检索（context.search）
+// @Tags     contexts
+// @Produce  json
+// @Param    entityType  path   string  true   "entity type"
+// @Param    entityID    path   string  true   "entity id"
+// @Param    q           query  string  true   "检索词"
+// @Param    limit       query  int     false  "条数，默认 10"
+// @Success  200  {object}  map[string]any
+// @Router   /api/contexts/{entityType}/{entityID}/search [get]
 func (s *Server) handleSearch(w http.ResponseWriter, req *http.Request) {
 	entity, err := ParseEntity(req.PathValue("entityType"), req.PathValue("entityID"))
 	if err != nil {
@@ -244,6 +352,13 @@ func (s *Server) writeSearch(w http.ResponseWriter, req *http.Request, entity Co
 	writeJSON(w, http.StatusOK, map[string]any{"results": results, "entity": entity})
 }
 
+// @Summary  取一段全文（context.get）
+// @Tags     contexts
+// @Produce  json
+// @Param    sectionID  path  string  true  "section_id"
+// @Success  200  {object}  Section
+// @Failure  404  {object}  errBody
+// @Router   /api/sections/{sectionID} [get]
 func (s *Server) handleGetSection(w http.ResponseWriter, req *http.Request) {
 	sec, err := s.svc.GetSection(req.Context(), req.PathValue("sectionID"))
 	if err != nil {
@@ -253,6 +368,11 @@ func (s *Server) handleGetSection(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, sec)
 }
 
+// @Summary  服务说明
+// @Tags     system
+// @Produce  plain
+// @Success  200  {string}  string
+// @Router   / [get]
 func (s *Server) handleHome(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, _ = io.WriteString(w, "knowledge-base\nGET /health  GET /api/backends  GET /api/knowledge\nAutonomy: GET /api/contexts/{type}/{id}/knowledge  GET /api/contexts/{type}/{id}/search?q=\n")
