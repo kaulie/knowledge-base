@@ -56,7 +56,7 @@ func TestRegisterSyncBindSearch(t *testing.T) {
 	}
 	hits, err = svc.Search(context.Background(), SearchRequest{Entity: ContextEntity{Type: EntityProject, ID: "project-b"}, Query: "heartbeat"})
 	if err != nil || len(hits) != 0 {
-		t.Fatalf("other project = %+v, %v", hits, err)
+		t.Fatalf("other entity = %+v, %v", hits, err)
 	}
 	hits, err = svc.Search(context.Background(), SearchRequest{Entity: ContextEntity{Type: EntityOrganization, ID: "project-a"}, Query: "heartbeat"})
 	if err != nil || len(hits) != 0 {
@@ -65,7 +65,7 @@ func TestRegisterSyncBindSearch(t *testing.T) {
 
 	listed, err := svc.ListForEntity(context.Background(), projA)
 	if err != nil || len(listed) != 1 || listed[0].ID != k.ID {
-		t.Fatalf("list project = %+v, %v", listed, err)
+		t.Fatalf("list entity = %+v, %v", listed, err)
 	}
 	if err := svc.Bind(context.Background(), k.ID, ContextEntity{Type: EntityOrganization, ID: "org-1"}); err != nil {
 		t.Fatal(err)

@@ -44,9 +44,8 @@ type RegisterRequest struct {
 	Shape         string            `json:"shape,omitempty"`
 	Source        Source            `json:"source"`
 	Suffixes      []string          `json:"suffixes,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
-	Bind          *ContextEntity    `json:"bind,omitempty"`
-	BindProjectID string            `json:"bind_project_id,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+	Bind     *ContextEntity    `json:"bind,omitempty"`
 }
 
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge, error) {
@@ -94,7 +93,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge,
 	if err := s.store.SaveKnowledge(ctx, k); err != nil {
 		return Knowledge{}, Wrap(ErrIndexFailed, err, "save knowledge %q", k.ID)
 	}
-	if entity, ok, err := entityFromBind(req.Bind, req.BindProjectID); err != nil {
+	if entity, ok, err := entityFromBind(req.Bind); err != nil {
 		return Knowledge{}, err
 	} else if ok {
 		if err := s.store.Bind(ctx, k.ID, entity); err != nil {

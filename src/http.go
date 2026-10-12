@@ -33,12 +33,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/knowledge/{id}/bindings", s.handleListBindings)
 	mux.HandleFunc("PUT /api/knowledge/{id}/bindings/{entityType}/{entityID}", s.handleBind)
 	mux.HandleFunc("DELETE /api/knowledge/{id}/bindings/{entityType}/{entityID}", s.handleUnbind)
-	mux.HandleFunc("PUT /api/knowledge/{id}/bindings/{projectID}", s.handleBindProject)
-	mux.HandleFunc("DELETE /api/knowledge/{id}/bindings/{projectID}", s.handleUnbindProject)
 	mux.HandleFunc("GET /api/contexts/{entityType}/{entityID}/knowledge", s.handleEntityKnowledge)
 	mux.HandleFunc("GET /api/contexts/{entityType}/{entityID}/search", s.handleSearch)
-	mux.HandleFunc("GET /api/projects/{projectID}/knowledge", s.handleProjectKnowledge)
-	mux.HandleFunc("GET /api/projects/{projectID}/search", s.handleProjectSearch)
 	mux.HandleFunc("GET /api/sections/{sectionID}", s.handleGetSection)
 	mux.HandleFunc("GET /", s.handleHome)
 	return mux
@@ -111,10 +107,6 @@ func (s *Server) handleList(w http.ResponseWriter, req *http.Request) {
 	q := req.URL.Query()
 	typ := strings.TrimSpace(q.Get("entity_type"))
 	id := strings.TrimSpace(q.Get("entity_id"))
-	if typ == "" && strings.TrimSpace(q.Get("project_id")) != "" {
-		typ = EntityProject
-		id = strings.TrimSpace(q.Get("project_id"))
-	}
 	if typ != "" || id != "" {
 		entity, err := ParseEntity(typ, id)
 		if err != nil {
@@ -210,32 +202,6 @@ func (s *Server) handleUnbind(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) handleBindProject(w http.ResponseWriter, req *http.Request) {
-	entity, err := ParseEntity(EntityProject, req.PathValue("projectID"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	if err := s.svc.Bind(req.Context(), req.PathValue("id"), entity); err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"knowledge_id": req.PathValue("id"), "entity": entity})
-}
-
-func (s *Server) handleUnbindProject(w http.ResponseWriter, req *http.Request) {
-	entity, err := ParseEntity(EntityProject, req.PathValue("projectID"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	if err := s.svc.Unbind(req.Context(), req.PathValue("id"), entity); err != nil {
-		writeErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (s *Server) handleEntityKnowledge(w http.ResponseWriter, req *http.Request) {
 	entity, err := ParseEntity(req.PathValue("entityType"), req.PathValue("entityID"))
 	if err != nil {
@@ -250,31 +216,8 @@ func (s *Server) handleEntityKnowledge(w http.ResponseWriter, req *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"knowledge": out, "entity": entity})
 }
 
-func (s *Server) handleProjectKnowledge(w http.ResponseWriter, req *http.Request) {
-	entity, err := ParseEntity(EntityProject, req.PathValue("projectID"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	out, err := s.svc.ListForEntity(req.Context(), entity)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"knowledge": out, "entity": entity})
-}
-
 func (s *Server) handleSearch(w http.ResponseWriter, req *http.Request) {
 	entity, err := ParseEntity(req.PathValue("entityType"), req.PathValue("entityID"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	s.writeSearch(w, req, entity)
-}
-
-func (s *Server) handleProjectSearch(w http.ResponseWriter, req *http.Request) {
-	entity, err := ParseEntity(EntityProject, req.PathValue("projectID"))
 	if err != nil {
 		writeErr(w, err)
 		return

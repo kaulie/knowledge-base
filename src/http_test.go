@@ -28,7 +28,7 @@ func TestHTTPAutonomyReadPath(t *testing.T) {
 		t.Fatalf("backends: %d %s", rec.Code, rec.Body.String())
 	}
 
-	rec = post("/api/knowledge", `{"name":"notes","kind":"filesystem","provider":"local","shape":"directory","source":{"location":"`+root+`"},"bind_project_id":"project-a"}`)
+	rec = post("/api/knowledge", `{"name":"notes","kind":"filesystem","provider":"local","shape":"directory","source":{"location":"`+root+`"},"bind":{"type":"project","id":"alpha"}}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("register: %d %s", rec.Code, rec.Body.String())
 	}
@@ -43,27 +43,21 @@ func TestHTTPAutonomyReadPath(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/projects/project-a/search?q=heartbeat", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/contexts/project/alpha/search?q=heartbeat", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "heartbeat") {
 		t.Fatalf("search: %d %s", rec.Code, rec.Body.String())
 	}
 
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/projects/project-b/search?q=heartbeat", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/contexts/project/beta/search?q=heartbeat", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"results":[]`) {
-		t.Fatalf("other project: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("other entity: %d %s", rec.Code, rec.Body.String())
 	}
 
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/projects/project-a/knowledge", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/contexts/project/alpha/knowledge", nil))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), created.ID) {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
-	}
-
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/contexts/project/project-a/search?q=heartbeat", nil))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "heartbeat") {
-		t.Fatalf("context search: %d %s", rec.Code, rec.Body.String())
 	}
 
 	rec = httptest.NewRecorder()
