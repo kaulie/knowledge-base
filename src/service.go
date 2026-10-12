@@ -76,9 +76,13 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge,
 		if strings.TrimSpace(src.Repository) == "" {
 			src.Repository = loc
 		}
-		src.Path = gitPathPrefix(src.Path)
+		cleaned, asDir := normalizeGitPath(src.Path)
+		src.Path = cleaned
+		if asDir {
+			shape = ShapeDirectory
+		}
 		if !validRepoRelPath(src.Path) {
-			return Knowledge{}, Errorf(ErrInvalidQuery, "source.path is from the repository root (docs/x.md or /docs/x.md); it must stay inside the tree")
+			return Knowledge{}, Errorf(ErrInvalidQuery, "source.path is from the repository root (docs, docs/*, docs/x.md); it must stay inside the tree")
 		}
 		if shape == ShapeFile && src.Path == "" {
 			return Knowledge{}, Errorf(ErrInvalidQuery, "source.path from the repository root is required for shape file")
@@ -376,10 +380,20 @@ func (s *Service) Sync(ctx context.Context, knowledgeID string) (SyncResult, err
 
 	var files []ListedFile
 	root := strings.TrimSpace(mat.Root)
-	if k.Shape == ShapeFile {
+	single := k.Shape == ShapeFile
+	if k.Kind == KindSourceCodeRepository {
+		spec, asDir := normalizeGitPath(k.Source.Path)
+		if asDir || strings.ContainsAny(spec, "*?[") {
+			single = false
+			if spec != strings.TrimSpace(k.Source.Path) {
+				note(ctx, "info", "path %s is a directory glob, using %s", k.Source.Path, spec)
+			}
+		}
+	}
+	if single {
 		rel := strings.TrimSpace(k.Source.Path)
 		if k.Kind == KindSourceCodeRepository {
-			rel = gitPathPrefix(rel)
+			rel, _ = normalizeGitPath(rel)
 		}
 		if rel == "" {
 			rel = filepath.Base(strings.TrimSpace(k.Source.Location))

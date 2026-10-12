@@ -94,7 +94,7 @@ GET    /search
 }
 ```
 
-源码仓库必须填 **git 仓库地址**。仓库内 path 从**仓库根目录**写起，不是本机路径。前导 `/` 可有可无：`docs/runtime.md` 与 `/docs/runtime.md` 相同，登记后统一存成无前导斜杠。空 path = 整棵树；`shape: file` 必须写到具体文件。
+源码仓库必须填 **git 仓库地址**。仓库内 path 从**仓库根目录**写起，不是本机路径。前导 `/` 可有可无：`docs/runtime.md` 与 `/docs/runtime.md` 相同。`docs`、`docs/`、`docs/*`、`docs/**` 都表示 docs 目录整棵子树（不是名叫 `*` 的文件），登记后存成 `docs`。空 path = 整棵树；`shape: file` 必须写到具体文件。
 
 ```json
 {

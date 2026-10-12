@@ -318,8 +318,8 @@ const KIND_HINT = {
     filePh: "git@host:org/repo.git",
     dirPh: "git@host:org/repo.git",
     pathLabel: "path from repository root",
-    pathHint: "From the repo root, not a host path. Leading slash is optional: docs/x.md and /docs/x.md are the same. Empty directory = whole tree.",
-    pathPh: "docs/runtime.md",
+    pathHint: "From the repo root, not a host path. docs or docs/* means the docs tree. Leading slash is optional. Empty = whole tree.",
+    pathPh: "docs/*",
   },
   cloud: {
     file: "No cloud provider is implemented yet.",
@@ -372,6 +372,10 @@ function applyKind() {
   $("register").classList.toggle("git", kind === "source_code_repository");
   $("register").classList.toggle("no-provider", !list.length);
   $("f-register").disabled = !list.length;
+  if (kind === "source_code_repository") {
+    const dir = document.querySelector('input[name="f-shape"][value="directory"]');
+    if (dir) dir.checked = true;
+  }
   applyShape();
 }
 
@@ -556,6 +560,10 @@ $("register").addEventListener("submit", async function (event) {
   }
   const inside = $("f-path").value.trim();
   if (inside) body.source.path = inside;
+  if (kb === "source_code_repository" && /[*?]/.test(inside)) {
+    body.shape = "directory";
+    kind = "directory";
+  }
   if (kind === "file") {
     body.name = $("f-name").value.trim();
   } else {
