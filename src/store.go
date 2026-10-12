@@ -45,6 +45,7 @@ func NewMemoryStore() *MemoryStore {
 func (m *MemoryStore) SaveKnowledge(_ context.Context, k Knowledge) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	k.LastSync = nil
 	m.knowledge[k.ID] = k
 	return nil
 }

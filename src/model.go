@@ -65,6 +65,7 @@ type Knowledge struct {
 	Checksum  string            `json:"checksum,omitempty"`
 	Documents int               `json:"documents,omitempty"`
 	Bindings  []ContextEntity   `json:"bindings,omitempty"`
+	LastSync  *SyncResult       `json:"last_sync,omitempty"`
 	CreatedAt time.Time         `json:"created_at"`
 	UpdatedAt time.Time         `json:"updated_at"`
 }
@@ -94,13 +95,20 @@ type Section struct {
 	Source      Source `json:"source,omitempty"`
 }
 
+type SyncLog struct {
+	At      time.Time `json:"at"`
+	Level   string    `json:"level"`
+	Message string    `json:"message"`
+}
+
 type SyncResult struct {
-	KnowledgeID string `json:"knowledge_id"`
-	Status      string `json:"status"`
-	Revision    string `json:"revision,omitempty"`
-	Checksum    string `json:"checksum,omitempty"`
-	Documents   int    `json:"documents"`
-	Sections    int    `json:"sections"`
+	KnowledgeID string    `json:"knowledge_id"`
+	Status      string    `json:"status"`
+	Revision    string    `json:"revision,omitempty"`
+	Checksum    string    `json:"checksum,omitempty"`
+	Documents   int       `json:"documents"`
+	Sections    int       `json:"sections"`
+	Logs        []SyncLog `json:"logs,omitempty"`
 }
 
 type SearchRequest struct {

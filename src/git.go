@@ -104,9 +104,16 @@ func ensureClone(ctx context.Context, remote, ref, dest string) (string, error) 
 		return "", Errorf(ErrInvalidQuery, "git work tree path is required")
 	}
 	if isGitWorkTree(ctx, dest) {
+		note(ctx, "info", "refresh existing work tree")
 		if err := refreshWorkTree(ctx, dest, ref); err == nil {
-			return gitHEAD(ctx, dest)
+			rev, err := gitHEAD(ctx, dest)
+			if err != nil {
+				return "", err
+			}
+			note(ctx, "info", "work tree up to date")
+			return rev, nil
 		}
+		note(ctx, "warn", "refresh failed; clone again")
 		if err := os.RemoveAll(dest); err != nil {
 			return "", Wrap(ErrSourceUnavailable, err, "replace work tree %q", dest)
 		}
@@ -118,7 +125,12 @@ func ensureClone(ctx context.Context, remote, ref, dest string) (string, error) 
 	if err := cloneFresh(ctx, remote, ref, dest); err != nil {
 		return "", err
 	}
-	return gitHEAD(ctx, dest)
+	rev, err := gitHEAD(ctx, dest)
+	if err != nil {
+		return "", err
+	}
+	note(ctx, "info", "clone finished")
+	return rev, nil
 }
 
 func cloneFresh(ctx context.Context, remote, ref, dest string) error {
@@ -128,6 +140,9 @@ func cloneFresh(ctx context.Context, remote, ref, dest string) error {
 	args := []string{"clone", "--depth", "1"}
 	if ref != "" {
 		args = append(args, "--branch", ref)
+		note(ctx, "info", "git clone --depth 1 --branch %s", ref)
+	} else {
+		note(ctx, "info", "git clone --depth 1")
 	}
 	args = append(args, remote, dest)
 	cmd := exec.CommandContext(ctx, "git", args...)
@@ -143,6 +158,9 @@ func refreshWorkTree(ctx context.Context, dest, ref string) error {
 	fetch := []string{"fetch", "--depth", "1", "origin"}
 	if ref != "" {
 		fetch = append(fetch, ref)
+		note(ctx, "info", "git fetch origin %s", ref)
+	} else {
+		note(ctx, "info", "git fetch origin")
 	}
 	if out, err := gitCommand(ctx, dest, fetch...).CombinedOutput(); err != nil {
 		return Wrap(ErrSourceUnavailable, err, "git fetch: %s", strings.TrimSpace(string(out)))
