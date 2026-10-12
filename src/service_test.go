@@ -79,43 +79,123 @@ func TestRegisterSyncBindSearch(t *testing.T) {
 	}
 }
 
-func TestGitLocalRegister(t *testing.T) {
+func TestGitCloneOnBind(t *testing.T) {
+	t.Setenv(EnvDataDir, t.TempDir())
 	svc := NewService(NewMemoryStore())
-	plain := t.TempDir()
-	if err := os.WriteFile(filepath.Join(plain, "readme.md"), []byte("# X\n\nbody\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	origin := initGitOrigin(t, map[string]string{
+		"readme.md":      "# Root\n\nhello world\n",
+		"docs/runtime.md": "# Runtime\n\n## Heartbeat\n\nagents send a heartbeat every tick\n",
+		"main.go":        "package main\n",
+	})
+
 	k, err := svc.Register(context.Background(), RegisterRequest{
-		Kind: KindSourceCodeRepository, Provider: ProviderGitLocal,
-		Source: Source{Location: plain},
+		Kind: KindSourceCodeRepository, Provider: ProviderGit,
+		Shape: ShapeDirectory, Source: Source{Location: origin},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Sync(context.Background(), k.ID); !IsCode(err, ErrInvalidQuery) {
-		t.Fatalf("plain dir sync = %v", err)
+	if k.Provider != ProviderGit || k.Source.Repository != origin {
+		t.Fatalf("register = %+v", k)
+	}
+	if _, err := os.Stat(workTreeDir(k.ID)); !os.IsNotExist(err) {
+		t.Fatalf("clone should wait for bind, stat = %v", err)
 	}
 
-	repo := t.TempDir()
-	init := exec.Command("git", "-C", repo, "init")
-	init.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
-	if out, err := init.CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v\n%s", err, out)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "readme.md"), []byte("# X\n\nbody\n"), 0o644); err != nil {
+	proj := ContextEntity{Type: EntityProject, ID: "project-git"}
+	if err := svc.Bind(context.Background(), k.ID, proj); err != nil {
 		t.Fatal(err)
 	}
-	k, err = svc.Register(context.Background(), RegisterRequest{
-		Kind: KindSourceCodeRepository, Provider: ProviderGitLocal,
-		Source: Source{Location: repo},
+	if _, err := os.Stat(filepath.Join(workTreeDir(k.ID), ".git")); err != nil {
+		t.Fatalf("work tree: %v", err)
+	}
+	got, err := svc.Get(context.Background(), k.ID)
+	if err != nil || got.Documents != 2 || got.Revision == "" {
+		t.Fatalf("after bind = %+v, %v", got, err)
+	}
+
+	hits, err := svc.Search(context.Background(), SearchRequest{Entity: proj, Query: "heartbeat"})
+	if err != nil || len(hits) != 1 || hits[0].KnowledgeID != k.ID {
+		t.Fatalf("search = %+v, %v", hits, err)
+	}
+
+	if err := os.WriteFile(filepath.Join(workTreeDir(k.ID), "extra.md"), []byte("# Extra\n\nuntracked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	again, err := svc.Sync(context.Background(), k.ID)
+	if err != nil || again.Documents != 2 {
+		t.Fatalf("ls-tree should ignore untracked extra.md: %+v, %v", again, err)
+	}
+
+	if err := svc.Delete(context.Background(), k.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(workTreeDir(k.ID)); !os.IsNotExist(err) {
+		t.Fatalf("delete should remove work tree, stat = %v", err)
+	}
+}
+
+func TestGitRegisterBindParses(t *testing.T) {
+	t.Setenv(EnvDataDir, t.TempDir())
+	svc := NewService(NewMemoryStore())
+	origin := initGitOrigin(t, map[string]string{
+		"docs/runtime.md": "# Runtime\n\n## Heartbeat\n\nagents send a heartbeat every tick\n",
+	})
+	k, err := svc.Register(context.Background(), RegisterRequest{
+		Kind: KindSourceCodeRepository, Source: Source{Location: origin, Path: "docs"},
+		Bind: &ContextEntity{Type: EntityProject, ID: "alpha"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	sync, err := svc.Sync(context.Background(), k.ID)
-	if err != nil || sync.Documents != 1 {
-		t.Fatalf("git sync = %+v, %v", sync, err)
+	if k.Provider != ProviderGit || k.Documents != 1 {
+		t.Fatalf("register+bind = %+v", k)
 	}
+	hits, err := svc.Search(context.Background(), SearchRequest{
+		Entity: ContextEntity{Type: EntityProject, ID: "alpha"}, Query: "heartbeat",
+	})
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("search = %+v, %v", hits, err)
+	}
+}
+
+func TestGitFileNeedsPath(t *testing.T) {
+	svc := NewService(NewMemoryStore())
+	_, err := svc.Register(context.Background(), RegisterRequest{
+		Kind: KindSourceCodeRepository, Shape: ShapeFile,
+		Source: Source{Location: "git@host:org/repo.git"},
+	})
+	if !IsCode(err, ErrInvalidQuery) {
+		t.Fatalf("missing path = %v", err)
+	}
+}
+
+func initGitOrigin(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-b", "main")
+	run("config", "user.email", "test@example.com")
+	run("config", "user.name", "test")
+	for rel, body := range files {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("add", ".")
+	run("commit", "-m", "init")
+	return root
 }
 
 func TestUnimplementedProvider(t *testing.T) {
@@ -129,5 +209,10 @@ func TestUnimplementedProvider(t *testing.T) {
 		Kind: KindSourceCodeRepository, Provider: ProviderGitHub, Source: Source{Location: "owner/repo"},
 	}); !IsCode(err, ErrInvalidQuery) {
 		t.Fatalf("github = %v", err)
+	}
+	if _, err := svc.Register(context.Background(), RegisterRequest{
+		Kind: KindSourceCodeRepository, Provider: ProviderGitLocal, Source: Source{Location: "/tmp/checkout"},
+	}); !IsCode(err, ErrInvalidQuery) {
+		t.Fatalf("git-local = %v", err)
 	}
 }

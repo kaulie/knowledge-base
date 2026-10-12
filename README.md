@@ -22,7 +22,7 @@ Autonomy 用手里的 entity 取事实：内部先展开 `{type,id} → [knowled
 | kind | 已实现 | 未实现（`INVALID_QUERY`） |
 |------|--------|---------------------------|
 | `filesystem` | `local` | `sftp` / `ssh` |
-| `source_code_repository` | `git-local`（本机 checkout） | `github` / `gitlab` / `gitea` |
+| `source_code_repository` | `git`（绑定时 `git clone`，按仓库树解析） | `github` / `gitlab` / `gitea` |
 | `cloud` | （无） | `s3` / `gcs` / `azure` / `oss` |
 
 ## 运行
@@ -89,7 +89,23 @@ GET    /dashboard
 }
 ```
 
-`sync` 回 `{status: indexed|unchanged, revision, checksum, documents, sections}`。源未变（checksum + revision）不重建。
+源码仓库：
+
+```json
+{
+  "name": "autonomy",
+  "kind": "source_code_repository",
+  "provider": "git",
+  "shape": "directory",
+  "source": {"location": "git@github.com:kaulie/autonomy.git", "ref": "main"},
+  "suffixes": ["md"],
+  "bind": {"type": "project", "id": "749a0238"}
+}
+```
+
+`source_code_repository` / `git` 的 `source.location`（或 `source.repository`）是 clone URL，`source.ref` 可选。绑定（或带 `bind` 的登记）会 clone 到 `KNOWLEDGE_BASE_DATA/repos/{knowledge_id}`（默认 runtime `backend/data`），再按 `git ls-tree` 解析跟踪文件。不是本机已有 checkout，也不是 `git-local`。
+
+`sync` 回 `{status: indexed|unchanged, revision, checksum, documents, sections}`。源未变（checksum + revision）不重建。源码仓库的 `sync` 会 fetch 后再建索引。
 
 ## 读路径（给 Autonomy）
 

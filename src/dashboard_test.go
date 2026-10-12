@@ -31,8 +31,9 @@ func TestDashboardIsBuiltOnEntityAPIs(t *testing.T) {
 		`id="register"`, `id="f-kind"`, `id="f-provider"`,
 		`value="filesystem"`, `value="source_code_repository"`, `value="cloud"`,
 		`id="f-shape"`, `value="file"`, `value="directory"`, `recursive collection`,
-		`id="f-name"`, `id="f-location"`, `id="f-suffixes"`, `id="f-path"`, `id="f-sync"`, `id="f-bind"`,
-		`body.bind = ent`,
+		`id="f-name"`, `id="f-location"`, `id="f-suffixes"`, `id="f-path"`, `id="f-ref"`, `id="f-sync"`, `id="f-bind"`,
+		`git@host:org/repo.git`, `Bind clones the repository`,
+		`body.bind = ent`, `body.source.repository = location`,
 		`id="search"`, `id="f-query"`, `id="results"`, `id="section"`,
 		`async function api(method, path, body)`,
 		`api("GET", "/api/backends")`,
@@ -43,7 +44,7 @@ func TestDashboardIsBuiltOnEntityAPIs(t *testing.T) {
 		`api("DELETE", "/api/knowledge/" + encodeURIComponent(id))`,
 		`"/api/contexts/" + encodeURIComponent(ent.type) + "/"`,
 		`"/api/sections/" + encodeURIComponent(hit.dataset.section)`,
-		`confirm("Delete source "`,
+		`confirm("Delete source "`, `The remote is not touched.`,
 		`function currentEntity()`,
 	} {
 		if !strings.Contains(dashboardHTML, want) {
@@ -55,5 +56,8 @@ func TestDashboardIsBuiltOnEntityAPIs(t *testing.T) {
 	}
 	if strings.Contains(dashboardHTML, "http://") || strings.Contains(dashboardHTML, "https://") {
 		t.Error("dashboard should only call relative paths and load no external asset")
+	}
+	if strings.Contains(dashboardHTML, "git-local") {
+		t.Error("source_code_repository must clone via git, not git-local")
 	}
 }

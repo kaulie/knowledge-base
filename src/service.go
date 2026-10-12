@@ -60,9 +60,22 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge,
 	if shape != ShapeFile && shape != ShapeDirectory {
 		return Knowledge{}, Errorf(ErrInvalidQuery, "shape must be file or directory")
 	}
-	loc := strings.TrimSpace(req.Source.Location)
+	src := req.Source
+	loc := strings.TrimSpace(src.Location)
+	if loc == "" {
+		loc = strings.TrimSpace(src.Repository)
+	}
 	if loc == "" {
 		return Knowledge{}, Errorf(ErrInvalidQuery, "source.location is required")
+	}
+	src.Location = loc
+	if backend.Kind() == KindSourceCodeRepository {
+		if strings.TrimSpace(src.Repository) == "" {
+			src.Repository = loc
+		}
+		if shape == ShapeFile && strings.TrimSpace(src.Path) == "" {
+			return Knowledge{}, Errorf(ErrInvalidQuery, "source.path inside the repository is required for shape file")
+		}
 	}
 	now := s.now()
 	k := Knowledge{
@@ -71,7 +84,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge,
 		Kind:      backend.Kind(),
 		Provider:  backend.Provider(),
 		Shape:     shape,
-		Source:    req.Source,
+		Source:    src,
 		Suffixes:  req.Suffixes,
 		Access:    Access{Mode: "bound"},
 		Metadata:  req.Metadata,
@@ -82,7 +95,11 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge,
 		k.ID = s.newID()
 	}
 	if k.Name == "" {
-		k.Name = filepath.Base(loc)
+		if backend.Kind() == KindSourceCodeRepository {
+			k.Name = repoDisplayName(loc)
+		} else {
+			k.Name = filepath.Base(loc)
+		}
 	}
 	if existing, _ := s.store.GetKnowledge(ctx, k.ID); existing != nil {
 		k.CreatedAt = existing.CreatedAt
@@ -96,9 +113,14 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge,
 	if entity, ok, err := entityFromBind(req.Bind); err != nil {
 		return Knowledge{}, err
 	} else if ok {
-		if err := s.store.Bind(ctx, k.ID, entity); err != nil {
-			return Knowledge{}, Wrap(ErrIndexFailed, err, "bind %q to %s", k.ID, entity.Key())
+		if err := s.Bind(ctx, k.ID, entity); err != nil {
+			return Knowledge{}, err
 		}
+		fresh, err := s.Get(ctx, k.ID)
+		if err != nil {
+			return Knowledge{}, err
+		}
+		return *fresh, nil
 	}
 	s.attachBindings(ctx, &k)
 	return k, nil
@@ -147,8 +169,12 @@ func (s *Service) attachBindingsAll(ctx context.Context, items []Knowledge) {
 }
 
 func (s *Service) Delete(ctx context.Context, id string) error {
-	if _, err := s.Get(ctx, id); err != nil {
+	k, err := s.Get(ctx, id)
+	if err != nil {
 		return err
+	}
+	if k.Kind == KindSourceCodeRepository {
+		removeWorkTree(k.ID)
 	}
 	if err := s.store.DeleteKnowledge(ctx, strings.TrimSpace(id)); err != nil {
 		return Wrap(ErrIndexFailed, err, "delete knowledge %q", id)
@@ -157,12 +183,18 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 }
 
 func (s *Service) Bind(ctx context.Context, knowledgeID string, entity ContextEntity) error {
-	if _, err := s.Get(ctx, knowledgeID); err != nil {
+	k, err := s.Get(ctx, knowledgeID)
+	if err != nil {
 		return err
 	}
 	e, err := ParseEntity(entity.Type, entity.ID)
 	if err != nil {
 		return err
+	}
+	if k.Kind == KindSourceCodeRepository {
+		if _, err := s.Sync(ctx, k.ID); err != nil {
+			return err
+		}
 	}
 	return s.store.Bind(ctx, strings.TrimSpace(knowledgeID), e)
 }
@@ -231,12 +263,20 @@ func (s *Service) Sync(ctx context.Context, knowledgeID string) (SyncResult, err
 	if err != nil {
 		return SyncResult{}, err
 	}
+	mat, err := backend.Materialize(ctx, *k)
+	if err != nil {
+		return SyncResult{}, err
+	}
 	var files []ListedFile
-	root := strings.TrimSpace(k.Source.Location)
+	root := strings.TrimSpace(mat.Root)
 	if k.Shape == ShapeFile {
-		files = []ListedFile{{Name: filepath.Base(root), Location: root, Path: strings.TrimSpace(k.Source.Path)}}
+		rel := strings.TrimSpace(k.Source.Path)
+		if rel == "" {
+			rel = filepath.Base(strings.TrimSpace(k.Source.Location))
+		}
+		files = []ListedFile{{Name: filepath.Base(rel), Location: root, Path: rel}}
 	} else {
-		files, err = backend.List(ctx, root, k.Suffixes)
+		files, err = backend.List(ctx, *k, root)
 		if err != nil {
 			return SyncResult{}, err
 		}
@@ -248,12 +288,15 @@ func (s *Service) Sync(ctx context.Context, knowledgeID string) (SyncResult, err
 	var sectionsN int
 	var digest strings.Builder
 	var revision string
+	if mat.Revision != "" {
+		revision = mat.Revision
+	}
 	for _, f := range files {
 		rel := f.Path
 		if rel == "" {
 			rel = f.Name
 		}
-		content, rev, err := loadFile(ctx, *k, rel)
+		content, rev, err := loadFile(ctx, *k, root, rel)
 		if err != nil {
 			return SyncResult{}, err
 		}

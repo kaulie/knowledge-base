@@ -24,7 +24,7 @@ func TestHTTPAutonomyReadPath(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/backends", nil))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "filesystem") {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "filesystem") || !strings.Contains(rec.Body.String(), `"provider":"git"`) {
 		t.Fatalf("backends: %d %s", rec.Code, rec.Body.String())
 	}
 
