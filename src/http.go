@@ -41,6 +41,7 @@ func (s *Server) routes() []httpRoute {
 		{"GET /api/contexts/{entityType}/{entityID}/knowledge", s.handleEntityKnowledge},
 		{"GET /api/contexts/{entityType}/{entityID}/search", s.handleSearch},
 		{"GET /api/sections/{sectionID}", s.handleGetSection},
+		{"GET /dashboard", s.handleDashboard},
 		{"GET /", s.handleHome},
 	}
 }
@@ -368,12 +369,21 @@ func (s *Server) handleGetSection(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, http.StatusOK, sec)
 }
 
-// @Summary  服务说明
+// @Summary  维护页（登记 / 绑定 / 同步 / 检索）
 // @Tags     system
-// @Produce  plain
+// @Produce  html
 // @Success  200  {string}  string
 // @Router   / [get]
-func (s *Server) handleHome(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = io.WriteString(w, "knowledge-base\nGET /health  GET /api/backends  GET /api/knowledge\nAutonomy: GET /api/contexts/{type}/{id}/knowledge  GET /api/contexts/{type}/{id}/search?q=\n")
+func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
+	s.handleDashboard(w, r)
+}
+
+// @Summary  维护页
+// @Tags     system
+// @Produce  html
+// @Success  200  {string}  string
+// @Router   /dashboard [get]
+func (s *Server) handleDashboard(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, dashboardHTML)
 }

@@ -67,6 +67,9 @@ func TestRegisterSyncBindSearch(t *testing.T) {
 	if err != nil || len(listed) != 1 || listed[0].ID != k.ID {
 		t.Fatalf("list entity = %+v, %v", listed, err)
 	}
+	if len(listed[0].Bindings) != 1 || listed[0].Bindings[0] != projA {
+		t.Fatalf("list bindings = %+v", listed[0].Bindings)
+	}
 	if err := svc.Bind(context.Background(), k.ID, ContextEntity{Type: EntityOrganization, ID: "org-1"}); err != nil {
 		t.Fatal(err)
 	}

@@ -35,6 +35,8 @@ go run ./cmd/knowledge-based
 
 V1 索引在进程内存里，重启即空。持久化（postgres）与远程连接器后加。
 
+维护页：`GET /` 或 `GET /dashboard`。按 CONTEXT entity `{type, id}` 登记、绑定、同步、检索。
+
 ## 服务中心与部署
 
 契约真源是 handler 上的 swag 注解（`cmd/knowledge-based/main.go` + `src/http.go`）。`src/contract_test.go` 保证注解与路由表一一对应。
@@ -68,6 +70,8 @@ DELETE /api/knowledge/{id}/bindings/{entityType}/{entityID}
 GET    /api/knowledge/{id}/bindings
 GET    /api/backends
 GET    /health
+GET    /
+GET    /dashboard
 ```
 
 登记示例：
