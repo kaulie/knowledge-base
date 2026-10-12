@@ -12,10 +12,10 @@ type Store interface {
 	ListKnowledge(ctx context.Context) ([]Knowledge, error)
 	DeleteKnowledge(ctx context.Context, id string) error
 
-	Bind(ctx context.Context, knowledgeID, projectID string) error
-	Unbind(ctx context.Context, knowledgeID, projectID string) error
-	BindingsByKnowledge(ctx context.Context, knowledgeID string) ([]string, error)
-	KnowledgeIDsByProject(ctx context.Context, projectID string) ([]string, error)
+	Bind(ctx context.Context, knowledgeID string, entity ContextEntity) error
+	Unbind(ctx context.Context, knowledgeID string, entity ContextEntity) error
+	BindingsByKnowledge(ctx context.Context, knowledgeID string) ([]ContextEntity, error)
+	KnowledgeIDsByEntity(ctx context.Context, entity ContextEntity) ([]string, error)
 
 	ReplaceDocuments(ctx context.Context, knowledgeID string, docs []Document) error
 	ListDocuments(ctx context.Context, knowledgeID string) ([]Document, error)
@@ -28,7 +28,7 @@ type Store interface {
 type MemoryStore struct {
 	mu        sync.RWMutex
 	knowledge map[string]Knowledge
-	bindings  map[string]map[string]bool // knowledgeID -> projectID
+	bindings  map[string]map[string]ContextEntity // knowledgeID -> entity.Key()
 	documents map[string][]Document      // knowledgeID
 	sections  map[string][]Section       // documentID
 }
@@ -36,7 +36,7 @@ type MemoryStore struct {
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		knowledge: make(map[string]Knowledge),
-		bindings:  make(map[string]map[string]bool),
+		bindings:  make(map[string]map[string]ContextEntity),
 		documents: make(map[string][]Document),
 		sections:  make(map[string][]Section),
 	}
@@ -88,40 +88,46 @@ func (m *MemoryStore) DeleteKnowledge(_ context.Context, id string) error {
 	return nil
 }
 
-func (m *MemoryStore) Bind(_ context.Context, knowledgeID, projectID string) error {
+func (m *MemoryStore) Bind(_ context.Context, knowledgeID string, entity ContextEntity) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.bindings[knowledgeID] == nil {
-		m.bindings[knowledgeID] = map[string]bool{}
+		m.bindings[knowledgeID] = map[string]ContextEntity{}
 	}
-	m.bindings[knowledgeID][projectID] = true
+	m.bindings[knowledgeID][entity.Key()] = entity
 	return nil
 }
 
-func (m *MemoryStore) Unbind(_ context.Context, knowledgeID, projectID string) error {
+func (m *MemoryStore) Unbind(_ context.Context, knowledgeID string, entity ContextEntity) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	delete(m.bindings[knowledgeID], projectID)
+	delete(m.bindings[knowledgeID], entity.Key())
 	return nil
 }
 
-func (m *MemoryStore) BindingsByKnowledge(_ context.Context, knowledgeID string) ([]string, error) {
+func (m *MemoryStore) BindingsByKnowledge(_ context.Context, knowledgeID string) ([]ContextEntity, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	var out []string
-	for p := range m.bindings[knowledgeID] {
-		out = append(out, p)
+	var out []ContextEntity
+	for _, e := range m.bindings[knowledgeID] {
+		out = append(out, e)
 	}
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Type != out[j].Type {
+			return out[i].Type < out[j].Type
+		}
+		return out[i].ID < out[j].ID
+	})
 	return out, nil
 }
 
-func (m *MemoryStore) KnowledgeIDsByProject(_ context.Context, projectID string) ([]string, error) {
+func (m *MemoryStore) KnowledgeIDsByEntity(_ context.Context, entity ContextEntity) ([]string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	key := entity.Key()
 	var out []string
-	for kid, projects := range m.bindings {
-		if projects[projectID] {
+	for kid, entities := range m.bindings {
+		if _, ok := entities[key]; ok {
 			out = append(out, kid)
 		}
 	}

@@ -42,15 +42,16 @@ type Source struct {
 }
 
 // Access is reserved for permission control. V1 does not enforce it:
-// project-scoped Autonomy reads only see knowledge bound to that project.
+// entity-scoped reads only see knowledge bound to that CONTEXT entity.
 type Access struct {
-	// Mode is "bound" (default): only bound project_ids may search.
+	// Mode is "bound" (default): only bound context entities may search.
 	// "open" is reserved for a later ACL implementation.
 	Mode string `json:"mode,omitempty"`
 }
 
 // Knowledge is one registered source (a knowledge_id). Documents and
-// sections belong to it. Projects bind to it; they do not own it.
+// sections belong to it. CONTEXT entities (project, …) bind to it; they
+// do not own it.
 type Knowledge struct {
 	ID        string            `json:"id"`
 	Name      string            `json:"name,omitempty"`
@@ -103,9 +104,9 @@ type SyncResult struct {
 }
 
 type SearchRequest struct {
-	ProjectID string
-	Query     string
-	Limit     int
+	Entity ContextEntity
+	Query  string
+	Limit  int
 }
 
 type SearchResult struct {

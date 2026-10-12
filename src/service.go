@@ -45,6 +45,7 @@ type RegisterRequest struct {
 	Source        Source            `json:"source"`
 	Suffixes      []string          `json:"suffixes,omitempty"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
+	Bind          *ContextEntity    `json:"bind,omitempty"`
 	BindProjectID string            `json:"bind_project_id,omitempty"`
 }
 
@@ -93,9 +94,11 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge,
 	if err := s.store.SaveKnowledge(ctx, k); err != nil {
 		return Knowledge{}, Wrap(ErrIndexFailed, err, "save knowledge %q", k.ID)
 	}
-	if pid := strings.TrimSpace(req.BindProjectID); pid != "" {
-		if err := s.store.Bind(ctx, k.ID, pid); err != nil {
-			return Knowledge{}, Wrap(ErrIndexFailed, err, "bind %q to %q", k.ID, pid)
+	if entity, ok, err := entityFromBind(req.Bind, req.BindProjectID); err != nil {
+		return Knowledge{}, err
+	} else if ok {
+		if err := s.store.Bind(ctx, k.ID, entity); err != nil {
+			return Knowledge{}, Wrap(ErrIndexFailed, err, "bind %q to %s", k.ID, entity.Key())
 		}
 	}
 	return k, nil
@@ -133,39 +136,43 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *Service) Bind(ctx context.Context, knowledgeID, projectID string) error {
+func (s *Service) Bind(ctx context.Context, knowledgeID string, entity ContextEntity) error {
 	if _, err := s.Get(ctx, knowledgeID); err != nil {
 		return err
 	}
-	projectID = strings.TrimSpace(projectID)
-	if projectID == "" {
-		return Errorf(ErrInvalidQuery, "project_id is required to bind")
+	e, err := ParseEntity(entity.Type, entity.ID)
+	if err != nil {
+		return err
 	}
-	return s.store.Bind(ctx, strings.TrimSpace(knowledgeID), projectID)
+	return s.store.Bind(ctx, strings.TrimSpace(knowledgeID), e)
 }
 
-func (s *Service) Unbind(ctx context.Context, knowledgeID, projectID string) error {
+func (s *Service) Unbind(ctx context.Context, knowledgeID string, entity ContextEntity) error {
 	if _, err := s.Get(ctx, knowledgeID); err != nil {
 		return err
 	}
-	return s.store.Unbind(ctx, strings.TrimSpace(knowledgeID), strings.TrimSpace(projectID))
+	e, err := ParseEntity(entity.Type, entity.ID)
+	if err != nil {
+		return err
+	}
+	return s.store.Unbind(ctx, strings.TrimSpace(knowledgeID), e)
 }
 
-func (s *Service) Bindings(ctx context.Context, knowledgeID string) ([]string, error) {
+func (s *Service) Bindings(ctx context.Context, knowledgeID string) ([]ContextEntity, error) {
 	if _, err := s.Get(ctx, knowledgeID); err != nil {
 		return nil, err
 	}
 	return s.store.BindingsByKnowledge(ctx, strings.TrimSpace(knowledgeID))
 }
 
-func (s *Service) ListForProject(ctx context.Context, projectID string) ([]Knowledge, error) {
-	projectID = strings.TrimSpace(projectID)
-	if projectID == "" {
-		return nil, Errorf(ErrInvalidQuery, "project_id is required")
-	}
-	ids, err := s.store.KnowledgeIDsByProject(ctx, projectID)
+func (s *Service) ListForEntity(ctx context.Context, entity ContextEntity) ([]Knowledge, error) {
+	e, err := ParseEntity(entity.Type, entity.ID)
 	if err != nil {
-		return nil, Wrap(ErrIndexFailed, err, "bindings for project %q", projectID)
+		return nil, err
+	}
+	ids, err := s.store.KnowledgeIDsByEntity(ctx, e)
+	if err != nil {
+		return nil, Wrap(ErrIndexFailed, err, "bindings for %s", e.Key())
 	}
 	out := make([]Knowledge, 0, len(ids))
 	for _, id := range ids {
@@ -277,9 +284,11 @@ func (s *Service) Sync(ctx context.Context, knowledgeID string) (SyncResult, err
 }
 
 func (s *Service) Search(ctx context.Context, req SearchRequest) ([]SearchResult, error) {
-	if strings.TrimSpace(req.ProjectID) == "" {
-		return nil, Errorf(ErrInvalidQuery, "search requires a project_id")
+	entity, err := ParseEntity(req.Entity.Type, req.Entity.ID)
+	if err != nil {
+		return nil, err
 	}
+	req.Entity = entity
 	if len(queryTerms(req.Query)) == 0 {
 		return nil, Errorf(ErrInvalidQuery, "search query %q has no searchable terms", req.Query)
 	}
@@ -289,13 +298,13 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) ([]SearchResult
 	if req.Limit > MaxSearchLimit {
 		req.Limit = MaxSearchLimit
 	}
-	ids, err := s.store.KnowledgeIDsByProject(ctx, strings.TrimSpace(req.ProjectID))
+	ids, err := s.store.KnowledgeIDsByEntity(ctx, entity)
 	if err != nil {
-		return nil, Wrap(ErrIndexFailed, err, "bindings for project %q", req.ProjectID)
+		return nil, Wrap(ErrIndexFailed, err, "bindings for %s", entity.Key())
 	}
 	results, err := s.store.Search(ctx, req, ids)
 	if err != nil {
-		return nil, Wrap(ErrIndexFailed, err, "search project %q", req.ProjectID)
+		return nil, Wrap(ErrIndexFailed, err, "search %s", entity.Key())
 	}
 	if results == nil {
 		results = []SearchResult{}
