@@ -50,6 +50,9 @@ if [ ! -f "${ENV_FILE}" ]; then
 # PROJECTS_API_URL=http://127.0.0.1:4211
 # 源码仓库 clone 目录（默认本文件同级的 data/）：
 # KNOWLEDGE_BASE_DATA=
+# 与 autonomy 同一台 Postgres，但用独立库 knowledge_base（启动时若不存在会 CREATE DATABASE）。
+# 不要指向 autonomy 那个库。
+KNOWLEDGE_BASE_POSTGRES_DSN=postgres://localhost:5432/knowledge_base?sslmode=disable
 EOF
   chmod 600 "${ENV_FILE}"
   log "已生成 ${ENV_FILE}"
@@ -60,6 +63,7 @@ set -a; . "${ENV_FILE}"; set +a
 
 export SERVICE_PORT="${PLATFORM_PORT}"
 export KNOWLEDGE_BASE_DATA="${KNOWLEDGE_BASE_DATA:-${DATA_DIR}}"
+export KNOWLEDGE_BASE_POSTGRES_DSN="${KNOWLEDGE_BASE_POSTGRES_DSN:-postgres://localhost:5432/knowledge_base?sslmode=disable}"
 BIND="${KB_BIND:-127.0.0.1}"
 export KNOWLEDGE_BASE_ADDR="${BIND}:${SERVICE_PORT}"
 export APP_VERSION
