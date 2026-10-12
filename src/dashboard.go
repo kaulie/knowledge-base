@@ -544,7 +544,7 @@ $("register").addEventListener("submit", async function (event) {
   const kb = knowledgeKind();
   const provider = $("f-provider").value.trim();
   if (!provider) { say("this knowledge base has no implemented provider yet", "err"); return; }
-  const kind = shape();
+  let kind = shape();
   const location = $("f-location").value.trim();
   if (!location) { say("location is required", "err"); return; }
   const body = {

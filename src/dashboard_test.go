@@ -35,6 +35,7 @@ func TestDashboardIsBuiltOnEntityAPIs(t *testing.T) {
 		`git@host:org/repo.git`, `Git repository address is required`,
 		`path from repository root`, `docs or docs/* means the docs tree`,
 		`body.bind = ent`, `body.source.repository = location`,
+		`let kind = shape()`, `kind = "directory"`,
 		`id="search"`, `id="f-query"`, `id="results"`, `id="section"`,
 		`async function api(method, path, body)`,
 		`api("GET", "/api/backends")`,
