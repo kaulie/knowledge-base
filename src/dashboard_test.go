@@ -33,7 +33,7 @@ func TestDashboardIsBuiltOnEntityAPIs(t *testing.T) {
 		`id="f-shape"`, `value="file"`, `value="directory"`, `recursive collection`,
 		`id="f-name"`, `id="f-location"`, `id="f-suffixes"`, `id="f-path"`, `id="f-ref"`, `id="f-sync"`, `id="f-bind"`,
 		`git@host:org/repo.git`, `Git repository address is required`,
-		`path from repository root`, `Leading slash is optional`,
+		`path from repository root`, `docs or docs/* means the docs tree`,
 		`body.bind = ent`, `body.source.repository = location`,
 		`id="search"`, `id="f-query"`, `id="results"`, `id="section"`,
 		`async function api(method, path, body)`,

@@ -210,6 +210,32 @@ func TestGitPathFromRepoRoot(t *testing.T) {
 	}
 }
 
+func TestGitPathGlobMeansDirectory(t *testing.T) {
+	t.Setenv(EnvDataDir, t.TempDir())
+	svc := NewService(NewMemoryStore())
+	origin := initGitOrigin(t, map[string]string{
+		"docs/runtime.md": "# Runtime\n\n## Heartbeat\n\nagents send a heartbeat every tick\n",
+		"readme.md":       "# Root\n\nhello\n",
+	})
+	for _, path := range []string{"docs/*", "docs/**", "/docs/*"} {
+		k, err := svc.Register(context.Background(), RegisterRequest{
+			ID: "kn-glob-" + strings.ReplaceAll(path, "/", "_"),
+			Kind: KindSourceCodeRepository, Shape: ShapeFile,
+			Source: Source{Location: origin, Path: path},
+			Bind:   &ContextEntity{Type: EntityProject, ID: "g-" + strings.ReplaceAll(path, "/", "_")},
+		})
+		if err != nil {
+			t.Fatalf("path %q: %v", path, err)
+		}
+		if k.Shape != ShapeDirectory || k.Source.Path != "docs" {
+			t.Fatalf("path %q stored as shape=%s path=%q", path, k.Shape, k.Source.Path)
+		}
+		if k.Documents != 1 {
+			t.Fatalf("path %q documents = %d (want only docs/)", path, k.Documents)
+		}
+	}
+}
+
 func TestGitFileNeedsPath(t *testing.T) {
 	svc := NewService(NewMemoryStore())
 	_, err := svc.Register(context.Background(), RegisterRequest{

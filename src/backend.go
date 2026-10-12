@@ -2,6 +2,7 @@ package kb
 
 import (
 	"context"
+	"path"
 	"strings"
 )
 
@@ -136,10 +137,10 @@ func (gitRepo) List(ctx context.Context, k Knowledge, root string) ([]ListedFile
 	if err != nil {
 		return nil, err
 	}
-	prefix := gitPathPrefix(k.Source.Path)
+	spec, _ := normalizeGitPath(k.Source.Path)
 	var files []string
 	for _, rel := range tracked {
-		if prefix != "" && rel != prefix && !strings.HasPrefix(rel, prefix+"/") {
+		if !matchGitPath(spec, rel) {
 			continue
 		}
 		if !want[suffixOf(rel)] {
@@ -167,6 +168,55 @@ func gitPathPrefix(path string) string {
 		p = strings.ReplaceAll(p, "//", "/")
 	}
 	return p
+}
+
+// normalizeGitPath cleans a repo-root path. docs/*, docs/** and docs/**/*
+// mean the docs tree (directory), not a file named "*".
+func normalizeGitPath(path string) (string, bool) {
+	p := gitPathPrefix(path)
+	if p == "*" || p == "**" {
+		return "", true
+	}
+	dir := false
+	for {
+		switch {
+		case strings.HasSuffix(p, "/**/*"):
+			p = strings.TrimSuffix(p, "/**/*")
+			dir = true
+		case strings.HasSuffix(p, "/**"):
+			p = strings.TrimSuffix(p, "/**")
+			dir = true
+		case strings.HasSuffix(p, "/*"):
+			p = strings.TrimSuffix(p, "/*")
+			dir = true
+		default:
+			p = strings.Trim(p, "/")
+			if p == "*" || p == "**" {
+				return "", true
+			}
+			if strings.ContainsAny(p, "*?[") {
+				dir = true
+			}
+			return p, dir
+		}
+		p = strings.Trim(p, "/")
+		if p == "*" || p == "**" || p == "" {
+			return "", true
+		}
+	}
+}
+
+func matchGitPath(spec, rel string) bool {
+	spec, _ = normalizeGitPath(spec)
+	rel = gitPathPrefix(rel)
+	if spec == "" {
+		return true
+	}
+	if strings.ContainsAny(spec, "*?[") {
+		ok, err := path.Match(spec, rel)
+		return err == nil && ok
+	}
+	return rel == spec || strings.HasPrefix(rel, spec+"/")
 }
 
 func validRepoRelPath(p string) bool {
