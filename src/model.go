@@ -111,6 +111,43 @@ type SyncResult struct {
 	Logs        []SyncLog `json:"logs,omitempty"`
 }
 
+type ContextSummary struct {
+	Type      string `json:"type"`
+	ID        string `json:"id"`
+	Name      string `json:"name,omitempty"`
+	Knowledge int    `json:"knowledge"`
+	Documents int    `json:"documents"`
+	Sections  int    `json:"sections"`
+}
+
+type BrowseSection struct {
+	ID      string `json:"id"`
+	Heading string `json:"heading"`
+}
+
+type BrowseFile struct {
+	ID       string          `json:"id"`
+	Name     string          `json:"name"`
+	Path     string          `json:"path,omitempty"`
+	Sections []BrowseSection `json:"sections"`
+}
+
+type BrowseKnowledge struct {
+	ID        string       `json:"id"`
+	Name      string       `json:"name,omitempty"`
+	Kind      string       `json:"kind"`
+	Provider  string       `json:"provider"`
+	Revision  string       `json:"revision,omitempty"`
+	Documents int          `json:"documents"`
+	Files     []BrowseFile `json:"files"`
+}
+
+type BrowseResult struct {
+	Entity    ContextEntity     `json:"entity"`
+	Name      string            `json:"name,omitempty"`
+	Knowledge []BrowseKnowledge `json:"knowledge"`
+}
+
 type SearchRequest struct {
 	Entity ContextEntity
 	Query  string

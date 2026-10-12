@@ -269,6 +269,74 @@ func (s *Service) Documents(ctx context.Context, knowledgeID string) ([]Document
 	return docs, nil
 }
 
+func (s *Service) ListContexts(ctx context.Context) ([]ContextSummary, error) {
+	ents, err := s.store.ListBoundEntities(ctx)
+	if err != nil {
+		return nil, Wrap(ErrIndexFailed, err, "list bound contexts")
+	}
+	out := make([]ContextSummary, 0, len(ents))
+	for _, e := range ents {
+		ids, err := s.store.KnowledgeIDsByEntity(ctx, e)
+		if err != nil {
+			return nil, err
+		}
+		var docs, secs int
+		for _, id := range ids {
+			dlist, err := s.store.ListDocuments(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			docs += len(dlist)
+			for _, d := range dlist {
+				slist, err := s.store.ListSections(ctx, d.ID)
+				if err != nil {
+					return nil, err
+				}
+				secs += len(slist)
+			}
+		}
+		out = append(out, ContextSummary{
+			Type: e.Type, ID: e.ID, Knowledge: len(ids), Documents: docs, Sections: secs,
+		})
+	}
+	return out, nil
+}
+
+func (s *Service) Browse(ctx context.Context, entity ContextEntity) (BrowseResult, error) {
+	items, err := s.ListForEntity(ctx, entity)
+	if err != nil {
+		return BrowseResult{}, err
+	}
+	e, err := ParseEntity(entity.Type, entity.ID)
+	if err != nil {
+		return BrowseResult{}, err
+	}
+	out := BrowseResult{Entity: e, Knowledge: []BrowseKnowledge{}}
+	for _, k := range items {
+		docs, err := s.Documents(ctx, k.ID)
+		if err != nil {
+			return BrowseResult{}, err
+		}
+		files := make([]BrowseFile, 0, len(docs))
+		for _, d := range docs {
+			secs, err := s.store.ListSections(ctx, d.ID)
+			if err != nil {
+				return BrowseResult{}, err
+			}
+			heads := make([]BrowseSection, 0, len(secs))
+			for _, sec := range secs {
+				heads = append(heads, BrowseSection{ID: sec.ID, Heading: sec.Heading})
+			}
+			files = append(files, BrowseFile{ID: d.ID, Name: d.Name, Path: d.Path, Sections: heads})
+		}
+		out.Knowledge = append(out.Knowledge, BrowseKnowledge{
+			ID: k.ID, Name: k.Name, Kind: k.Kind, Provider: k.Provider,
+			Revision: k.Revision, Documents: len(docs), Files: files,
+		})
+	}
+	return out, nil
+}
+
 func (s *Service) Sync(ctx context.Context, knowledgeID string) (SyncResult, error) {
 	lg := newSyncLogger(s.now)
 	ctx = withSyncLog(ctx, lg)

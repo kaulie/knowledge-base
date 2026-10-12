@@ -35,7 +35,9 @@ go run ./cmd/knowledge-based
 
 V1 索引在进程内存里，重启即空。持久化（postgres）与远程连接器后加。
 
-维护页：`GET /` 或 `GET /dashboard`。按 CONTEXT entity `{type, id}` 登记、绑定、同步、检索。选 `project` 时项目列表来自 web-cursor `GET /api/projects`（本服务只代理，`PROJECTS_API_URL`，默认 `http://127.0.0.1:4211`），不用手填。
+维护页：`GET /` 或 `GET /dashboard`。按 CONTEXT entity `{type, id}` 登记、绑定、同步。选 `project` 时项目列表来自 web-cursor `GET /api/projects`（本服务只代理，`PROJECTS_API_URL`，默认 `http://127.0.0.1:4211`），不用手填。
+
+检索页：`GET /search`。列出已绑定的 context，以及每个下面已索引的文件与标题。
 
 ## 服务中心与部署
 
@@ -70,9 +72,12 @@ DELETE /api/knowledge/{id}/bindings/{entityType}/{entityID}
 GET    /api/knowledge/{id}/bindings
 GET    /api/backends
 GET    /api/catalog/entities/{entityType}
+GET    /api/contexts
+GET    /api/contexts/{entityType}/{entityID}/browse
 GET    /health
 GET    /
 GET    /dashboard
+GET    /search
 ```
 
 登记示例：
@@ -114,10 +119,14 @@ GET    /dashboard
 ## 读路径（给 Autonomy）
 
 ```
+GET /api/contexts                                     # 已绑定 entity 清单
+GET /api/contexts/{entityType}/{entityID}/browse      # 该 entity 下已索引文件与标题
 GET /api/contexts/{entityType}/{entityID}/knowledge   # 等价 context.list
 GET /api/contexts/{entityType}/{entityID}/search?q=   # 等价 context.search
 GET /api/sections/{sectionID}                         # 等价 context.get
 ```
+
+维护页 `/` 管登记与绑定。检索页 `/search` 列出已绑定的 CONTEXT entity，以及每个下面有哪些文档和标题，并可按词检索。
 
 没有绑定 → `knowledge: []` / `results: []`，不是错误。Autonomy 按现有约定走 `need_input`。
 
