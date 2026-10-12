@@ -57,6 +57,9 @@ const dashboardHTML = `<!DOCTYPE html>
   .result:hover { background: #f9fafb; }
   .result .score { float: right; color: #667085; font-size: 12px; }
   pre.content { white-space: pre-wrap; background: #f9fafb; padding: 10px; border-radius: 6px; margin: 8px 0 0; font-size: 12px; }
+  .nav { display: flex; gap: 14px; margin: 0 0 14px; }
+  .nav a { color: #1c4ed8; text-decoration: none; font-size: 13px; font-weight: 600; }
+  .nav a.on { color: #1c1e21; }
   .log-panel[hidden] { display: none; }
   #sync-log-body { margin: 8px 0 0; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; background: #111827; color: #e5e7eb; padding: 10px; border-radius: 6px; max-height: 280px; overflow: auto; white-space: pre-wrap; }
   #sync-log-body .log-at { color: #9ca3af; margin-right: 8px; }
@@ -66,11 +69,15 @@ const dashboardHTML = `<!DOCTYPE html>
 </style>
 </head>
 <body>
+<nav class="nav">
+  <a href="/" class="on">Maintain</a>
+  <a href="/search">Search</a>
+</nav>
 <h1>knowledge-base</h1>
 <div class="sub">
   Register sources by kind and provider, bind them to a CONTEXT entity
-  ({type, id}), sync the index, search sections and read one.
-  project is one entity type among others.
+  ({type, id}), and sync the index.
+  Browse bound context data on the Search page.
 </div>
 
 <div id="msg" class="msg"></div>
@@ -165,6 +172,7 @@ const dashboardHTML = `<!DOCTYPE html>
 </form>
 
 <h2>Search</h2>
+<div class="hint" style="margin-bottom:8px">Full inventory of bound contexts is on <a href="/search">Search</a>.</div>
 <form id="search" autocomplete="off">
   <div class="hint">Searches sources bound to the CONTEXT entity above.</div>
   <div class="row">

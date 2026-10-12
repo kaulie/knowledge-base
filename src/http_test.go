@@ -61,6 +61,17 @@ func TestHTTPAutonomyReadPath(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/contexts", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"alpha"`) {
+		t.Fatalf("contexts: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/contexts/project/alpha/browse", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "notes.md") {
+		t.Fatalf("browse: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
 	put := httptest.NewRequest(http.MethodPut, "/api/knowledge/"+created.ID+"/bindings/organization/org-1", nil)
 	h.ServeHTTP(httptest.NewRecorder(), put)
 	rec = httptest.NewRecorder()

@@ -71,6 +71,14 @@ func TestRegisterSyncBindSearch(t *testing.T) {
 	if err != nil || len(listed) != 1 || listed[0].ID != k.ID {
 		t.Fatalf("list entity = %+v, %v", listed, err)
 	}
+	ctxs, err := svc.ListContexts(context.Background())
+	if err != nil || len(ctxs) != 1 || ctxs[0].Type != EntityProject || ctxs[0].ID != "project-a" || ctxs[0].Documents < 1 {
+		t.Fatalf("list contexts = %+v, %v", ctxs, err)
+	}
+	browse, err := svc.Browse(context.Background(), projA)
+	if err != nil || len(browse.Knowledge) != 1 || len(browse.Knowledge[0].Files) < 1 {
+		t.Fatalf("browse = %+v, %v", browse, err)
+	}
 	if len(listed[0].Bindings) != 1 || listed[0].Bindings[0] != projA {
 		t.Fatalf("list bindings = %+v", listed[0].Bindings)
 	}

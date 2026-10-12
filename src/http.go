@@ -40,9 +40,12 @@ func (s *Server) routes() []httpRoute {
 		{"GET /api/knowledge/{id}/bindings", s.handleListBindings},
 		{"PUT /api/knowledge/{id}/bindings/{entityType}/{entityID}", s.handleBind},
 		{"DELETE /api/knowledge/{id}/bindings/{entityType}/{entityID}", s.handleUnbind},
+		{"GET /api/contexts", s.handleListContexts},
 		{"GET /api/contexts/{entityType}/{entityID}/knowledge", s.handleEntityKnowledge},
+		{"GET /api/contexts/{entityType}/{entityID}/browse", s.handleBrowse},
 		{"GET /api/contexts/{entityType}/{entityID}/search", s.handleSearch},
 		{"GET /api/sections/{sectionID}", s.handleGetSection},
+		{"GET /search", s.handleSearchPage},
 		{"GET /dashboard", s.handleDashboard},
 		{"GET /", s.handleHome},
 	}
@@ -339,6 +342,36 @@ func (s *Server) handleUnbind(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// @Summary  已绑定的 CONTEXT entity 清单（检索页用）
+// @Tags     contexts
+// @Produce  json
+// @Success  200  {object}  map[string]any
+// @Router   /api/contexts [get]
+func (s *Server) handleListContexts(w http.ResponseWriter, req *http.Request) {
+	out, err := s.svc.ListContexts(req.Context())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if out == nil {
+		out = []ContextSummary{}
+	}
+	names := map[string]string{}
+	for _, e := range s.catalog.List(req.Context(), EntityProject).Entities {
+		if e.Name != "" {
+			names[e.ID] = e.Name
+		}
+	}
+	for i := range out {
+		if out[i].Type == EntityProject {
+			if n := names[out[i].ID]; n != "" {
+				out[i].Name = n
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"contexts": out})
+}
+
 // @Summary  某个 CONTEXT entity 绑定的知识源（context.list）
 // @Tags     contexts
 // @Produce  json
@@ -358,6 +391,35 @@ func (s *Server) handleEntityKnowledge(w http.ResponseWriter, req *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"knowledge": out, "entity": entity})
+}
+
+// @Summary  某个 CONTEXT entity 已索引的文件与标题（检索页浏览）
+// @Tags     contexts
+// @Produce  json
+// @Param    entityType  path  string  true  "entity type"
+// @Param    entityID    path  string  true  "entity id"
+// @Success  200  {object}  BrowseResult
+// @Router   /api/contexts/{entityType}/{entityID}/browse [get]
+func (s *Server) handleBrowse(w http.ResponseWriter, req *http.Request) {
+	entity, err := ParseEntity(req.PathValue("entityType"), req.PathValue("entityID"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	out, err := s.svc.Browse(req.Context(), entity)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if entity.Type == EntityProject {
+		for _, e := range s.catalog.List(req.Context(), EntityProject).Entities {
+			if e.ID == entity.ID && e.Name != "" {
+				out.Name = e.Name
+				break
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // @Summary  在某个 CONTEXT entity 的绑定源里检索（context.search）
@@ -430,4 +492,14 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDashboard(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = io.WriteString(w, dashboardHTML)
+}
+
+// @Summary  检索页（已绑定 context 与索引数据）
+// @Tags     system
+// @Produce  html
+// @Success  200  {string}  string
+// @Router   /search [get]
+func (s *Server) handleSearchPage(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = io.WriteString(w, searchHTML)
 }

@@ -16,6 +16,8 @@ type Store interface {
 	Unbind(ctx context.Context, knowledgeID string, entity ContextEntity) error
 	BindingsByKnowledge(ctx context.Context, knowledgeID string) ([]ContextEntity, error)
 	KnowledgeIDsByEntity(ctx context.Context, entity ContextEntity) ([]string, error)
+	ListBoundEntities(ctx context.Context) ([]ContextEntity, error)
+	ListSections(ctx context.Context, documentID string) ([]Section, error)
 
 	ReplaceDocuments(ctx context.Context, knowledgeID string, docs []Document) error
 	ListDocuments(ctx context.Context, knowledgeID string) ([]Document, error)
@@ -119,6 +121,37 @@ func (m *MemoryStore) BindingsByKnowledge(_ context.Context, knowledgeID string)
 		}
 		return out[i].ID < out[j].ID
 	})
+	return out, nil
+}
+
+func (m *MemoryStore) ListBoundEntities(_ context.Context) ([]ContextEntity, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	seen := map[string]ContextEntity{}
+	for _, ents := range m.bindings {
+		for key, e := range ents {
+			seen[key] = e
+		}
+	}
+	out := make([]ContextEntity, 0, len(seen))
+	for _, e := range seen {
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Type != out[j].Type {
+			return out[i].Type < out[j].Type
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
+}
+
+func (m *MemoryStore) ListSections(_ context.Context, documentID string) ([]Section, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	src := m.sections[documentID]
+	out := make([]Section, len(src))
+	copy(out, src)
 	return out, nil
 }
 
