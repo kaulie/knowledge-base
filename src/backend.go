@@ -76,7 +76,7 @@ type filesystemLocal struct{}
 func (filesystemLocal) Kind() string     { return KindFilesystem }
 func (filesystemLocal) Provider() string { return ProviderLocal }
 
-func (filesystemLocal) Materialize(_ context.Context, k Knowledge) (Materialized, error) {
+func (filesystemLocal) Materialize(ctx context.Context, k Knowledge) (Materialized, error) {
 	root := strings.TrimSpace(k.Source.Location)
 	if looksRemote(root) {
 		return Materialized{}, Errorf(ErrInvalidQuery, "filesystem/local location must be a path on this host")
@@ -84,6 +84,7 @@ func (filesystemLocal) Materialize(_ context.Context, k Knowledge) (Materialized
 	if root == "" {
 		return Materialized{}, Errorf(ErrInvalidQuery, "source.location is required")
 	}
+	note(ctx, "info", "open host path %s", root)
 	return Materialized{Root: root}, nil
 }
 

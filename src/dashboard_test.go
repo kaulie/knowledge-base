@@ -47,6 +47,7 @@ func TestDashboardIsBuiltOnEntityAPIs(t *testing.T) {
 		`"/api/sections/" + encodeURIComponent(hit.dataset.section)`,
 		`confirm("Delete source "`, `The remote is not touched.`,
 		`function currentEntity()`,
+		`id="sync-log"`, `function showSyncLog`, `out.logs`, `created.last_sync`,
 	} {
 		if !strings.Contains(dashboardHTML, want) {
 			t.Errorf("dashboard should contain %q", want)

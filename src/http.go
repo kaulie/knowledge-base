@@ -59,6 +59,7 @@ func (s *Server) Handler() http.Handler {
 type errBody struct {
 	Code    ErrorCode `json:"code"`
 	Message string    `json:"message"`
+	Logs    []SyncLog `json:"logs,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -87,6 +88,28 @@ func writeErr(w http.ResponseWriter, err error) {
 		msg = strings.TrimPrefix(msg, prefix)
 	}
 	writeJSON(w, status, errBody{Code: code, Message: msg})
+}
+
+func writeFail(w http.ResponseWriter, err error, logs []SyncLog) {
+	code := CodeOf(err)
+	status := http.StatusInternalServerError
+	switch code {
+	case ErrInvalidQuery:
+		status = http.StatusBadRequest
+	case ErrNotFound:
+		status = http.StatusNotFound
+	case ErrForbidden:
+		status = http.StatusForbidden
+	case ErrSourceUnavailable, ErrParseFailed:
+		status = http.StatusUnprocessableEntity
+	case "":
+		code = ErrIndexFailed
+	}
+	msg := err.Error()
+	if prefix := string(code) + ": "; strings.HasPrefix(msg, prefix) {
+		msg = strings.TrimPrefix(msg, prefix)
+	}
+	writeJSON(w, status, errBody{Code: code, Message: msg, Logs: logs})
 }
 
 // @Summary  健康检查
@@ -227,7 +250,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, req *http.Request) {
 func (s *Server) handleSync(w http.ResponseWriter, req *http.Request) {
 	out, err := s.svc.Sync(req.Context(), req.PathValue("id"))
 	if err != nil {
-		writeErr(w, err)
+		writeFail(w, err, out.Logs)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -280,11 +303,20 @@ func (s *Server) handleBind(w http.ResponseWriter, req *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if err := s.svc.Bind(req.Context(), req.PathValue("id"), entity); err != nil {
-		writeErr(w, err)
+	synced, err := s.svc.Bind(req.Context(), req.PathValue("id"), entity)
+	if err != nil {
+		var logs []SyncLog
+		if synced != nil {
+			logs = synced.Logs
+		}
+		writeFail(w, err, logs)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"knowledge_id": req.PathValue("id"), "entity": entity})
+	body := map[string]any{"knowledge_id": req.PathValue("id"), "entity": entity}
+	if synced != nil {
+		body["sync"] = synced
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 // @Summary  解绑一个 CONTEXT entity

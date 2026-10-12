@@ -57,6 +57,12 @@ const dashboardHTML = `<!DOCTYPE html>
   .result:hover { background: #f9fafb; }
   .result .score { float: right; color: #667085; font-size: 12px; }
   pre.content { white-space: pre-wrap; background: #f9fafb; padding: 10px; border-radius: 6px; margin: 8px 0 0; font-size: 12px; }
+  .log-panel[hidden] { display: none; }
+  #sync-log-body { margin: 8px 0 0; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; background: #111827; color: #e5e7eb; padding: 10px; border-radius: 6px; max-height: 280px; overflow: auto; white-space: pre-wrap; }
+  #sync-log-body .log-at { color: #9ca3af; margin-right: 8px; }
+  #sync-log-body .log-info { color: #e5e7eb; }
+  #sync-log-body .log-warn { color: #fbbf24; }
+  #sync-log-body .log-error { color: #f87171; }
 </style>
 </head>
 <body>
@@ -68,6 +74,10 @@ const dashboardHTML = `<!DOCTYPE html>
 </div>
 
 <div id="msg" class="msg"></div>
+<div id="sync-log" class="panel log-panel" hidden>
+  <div class="formtitle" id="sync-log-title">sync log</div>
+  <div id="sync-log-body"></div>
+</div>
 
 <div class="panel" id="entity-bar">
   <div class="formtitle">CONTEXT entity</div>
@@ -184,10 +194,32 @@ async function api(method, path, body) {
   let parsed = null;
   try { parsed = text ? JSON.parse(text) : null; } catch (e) { parsed = { raw: text }; }
   if (!res.ok) {
-    throw new Error(res.status + " " + (parsed && parsed.code ? parsed.code + ": " : "") +
+    const err = new Error(res.status + " " + (parsed && parsed.code ? parsed.code + ": " : "") +
       ((parsed && (parsed.message || parsed.error || parsed.raw)) || res.statusText));
+    err.logs = parsed && parsed.logs;
+    throw err;
   }
   return parsed;
+}
+
+function showSyncLog(logs, title) {
+  const box = $("sync-log");
+  const body = $("sync-log-body");
+  if (!logs || !logs.length) {
+    box.hidden = true;
+    body.innerHTML = "";
+    return;
+  }
+  $("sync-log-title").textContent = title || "sync log";
+  body.innerHTML = logs.map(function (l) {
+    const raw = l && l.at ? String(l.at) : "";
+    const t = raw.replace("T", " ").replace(/\.\d+Z$/, "Z").replace("Z", "");
+    const level = (l && l.level) || "info";
+    return '<div class="log-' + esc(level) + '"><span class="log-at">' + esc(t) +
+      "</span>" + esc(l.message || "") + "</div>";
+  }).join("");
+  box.hidden = false;
+  body.scrollTop = body.scrollHeight;
 }
 
 function esc(value) {
@@ -463,6 +495,7 @@ $("rows").addEventListener("click", async function (event) {
   try {
     if (syncBtn) {
       const out = await api("POST", "/api/knowledge/" + encodeURIComponent(syncBtn.dataset.sync) + "/sync");
+      showSyncLog(out.logs, "sync " + syncBtn.dataset.sync);
       say("synced " + syncBtn.dataset.sync + ": " + (out.status || "ok") +
         (out.sections != null ? " (" + out.sections + " sections)" : ""));
       await load();
@@ -473,7 +506,8 @@ $("rows").addEventListener("click", async function (event) {
       const path = "/api/knowledge/" + encodeURIComponent(id) + "/bindings/" +
         encodeURIComponent(ent.type) + "/" + encodeURIComponent(ent.id);
       if (bindBtn) {
-        await api("PUT", path);
+        const out = await api("PUT", path);
+        showSyncLog(out && out.sync && out.sync.logs, "sync " + id);
         say("bound " + id + " to " + ent.type + "/" + ent.id);
       } else {
         await api("DELETE", path);
@@ -488,6 +522,7 @@ $("rows").addEventListener("click", async function (event) {
       await load();
     }
   } catch (e) {
+    showSyncLog(e.logs);
     say(e.message, "err");
   }
 });
@@ -526,12 +561,17 @@ $("register").addEventListener("submit", async function (event) {
   }
   try {
     const created = await api("POST", "/api/knowledge", body);
+    if (created.last_sync && created.last_sync.logs) {
+      showSyncLog(created.last_sync.logs, "sync " + created.id);
+    }
     let text = "registered " + created.id + " via " + kb + "/" + provider;
     if ($("f-sync").checked) {
       try {
         const out = await api("POST", "/api/knowledge/" + encodeURIComponent(created.id) + "/sync");
+        showSyncLog(out.logs, "sync " + created.id);
         text += ", synced " + (out.status || "ok") + (out.sections != null ? " (" + out.sections + " sections)" : "");
       } catch (e) {
+        showSyncLog(e.logs, "sync " + created.id);
         await load();
         say(text + ", but sync failed: " + e.message, "err");
         return;
@@ -542,6 +582,7 @@ $("register").addEventListener("submit", async function (event) {
     applyKind();
     await load();
   } catch (e) {
+    showSyncLog(e.logs);
     say(e.message, "err");
   }
 });

@@ -120,13 +120,15 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge,
 	if entity, ok, err := entityFromBind(req.Bind); err != nil {
 		return Knowledge{}, err
 	} else if ok {
-		if err := s.Bind(ctx, k.ID, entity); err != nil {
+		synced, err := s.Bind(ctx, k.ID, entity)
+		if err != nil {
 			return Knowledge{}, err
 		}
 		fresh, err := s.Get(ctx, k.ID)
 		if err != nil {
 			return Knowledge{}, err
 		}
+		fresh.LastSync = synced
 		return *fresh, nil
 	}
 	s.attachBindings(ctx, &k)
@@ -189,21 +191,27 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *Service) Bind(ctx context.Context, knowledgeID string, entity ContextEntity) error {
+func (s *Service) Bind(ctx context.Context, knowledgeID string, entity ContextEntity) (*SyncResult, error) {
 	k, err := s.Get(ctx, knowledgeID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	e, err := ParseEntity(entity.Type, entity.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var synced *SyncResult
 	if k.Kind == KindSourceCodeRepository {
-		if _, err := s.Sync(ctx, k.ID); err != nil {
-			return err
+		out, err := s.Sync(ctx, k.ID)
+		if err != nil {
+			return &out, err
 		}
+		synced = &out
 	}
-	return s.store.Bind(ctx, strings.TrimSpace(knowledgeID), e)
+	if err := s.store.Bind(ctx, strings.TrimSpace(knowledgeID), e); err != nil {
+		return synced, err
+	}
+	return synced, nil
 }
 
 func (s *Service) Unbind(ctx context.Context, knowledgeID string, entity ContextEntity) error {
@@ -262,18 +270,42 @@ func (s *Service) Documents(ctx context.Context, knowledgeID string) ([]Document
 }
 
 func (s *Service) Sync(ctx context.Context, knowledgeID string) (SyncResult, error) {
+	lg := newSyncLogger(s.now)
+	ctx = withSyncLog(ctx, lg)
+	fail := func(id string, err error) (SyncResult, error) {
+		note(ctx, "error", "%s", err.Error())
+		return SyncResult{KnowledgeID: id, Logs: lg.entries()}, err
+	}
+
 	k, err := s.Get(ctx, knowledgeID)
 	if err != nil {
-		return SyncResult{}, err
+		return fail(knowledgeID, err)
 	}
+	note(ctx, "info", "start %s kind=%s provider=%s shape=%s", k.ID, k.Kind, k.Provider, k.Shape)
+	if k.Kind == KindSourceCodeRepository {
+		note(ctx, "info", "git repository %s", gitRemote(k.Source))
+		if k.Source.Ref != "" {
+			note(ctx, "info", "ref %s", k.Source.Ref)
+		}
+		if k.Source.Path != "" {
+			note(ctx, "info", "path from repository root: %s", k.Source.Path)
+		}
+	} else if loc := strings.TrimSpace(k.Source.Location); loc != "" {
+		note(ctx, "info", "location %s", loc)
+	}
+
 	backend, err := ResolveBackend(k.Kind, k.Provider)
 	if err != nil {
-		return SyncResult{}, err
+		return fail(k.ID, err)
 	}
 	mat, err := backend.Materialize(ctx, *k)
 	if err != nil {
-		return SyncResult{}, err
+		return fail(k.ID, err)
 	}
+	if mat.Revision != "" {
+		note(ctx, "info", "work tree ready revision %s", mat.Revision)
+	}
+
 	var files []ListedFile
 	root := strings.TrimSpace(mat.Root)
 	if k.Shape == ShapeFile {
@@ -285,14 +317,16 @@ func (s *Service) Sync(ctx context.Context, knowledgeID string) (SyncResult, err
 			rel = filepath.Base(strings.TrimSpace(k.Source.Location))
 		}
 		files = []ListedFile{{Name: filepath.Base(rel), Location: root, Path: rel}}
+		note(ctx, "info", "single file %s", rel)
 	} else {
 		files, err = backend.List(ctx, *k, root)
 		if err != nil {
-			return SyncResult{}, err
+			return fail(k.ID, err)
 		}
 		if len(files) == 0 {
-			return SyncResult{}, Errorf(ErrInvalidQuery, "no documents under %q", root)
+			return fail(k.ID, Errorf(ErrInvalidQuery, "no documents under %q", root))
 		}
+		note(ctx, "info", "listed %d documents", len(files))
 	}
 	docs := make([]Document, 0, len(files))
 	var sectionsN int
@@ -308,7 +342,7 @@ func (s *Service) Sync(ctx context.Context, knowledgeID string) (SyncResult, err
 		}
 		content, rev, err := loadFile(ctx, *k, root, rel)
 		if err != nil {
-			return SyncResult{}, err
+			return fail(k.ID, err)
 		}
 		if rev != "" {
 			revision = rev
@@ -320,19 +354,20 @@ func (s *Service) Sync(ctx context.Context, knowledgeID string) (SyncResult, err
 		doc := Document{ID: docID, KnowledgeID: k.ID, Name: f.Name, Path: rel, Revision: rev, Checksum: checksum}
 		sections, err := ParseMarkdown(docID, content)
 		if err != nil {
-			return SyncResult{}, err
+			return fail(k.ID, err)
 		}
 		for i := range sections {
 			sections[i].KnowledgeID = k.ID
 		}
 		if err := s.store.ReplaceSections(ctx, docID, sections); err != nil {
-			return SyncResult{}, Wrap(ErrIndexFailed, err, "index %q", docID)
+			return fail(k.ID, Wrap(ErrIndexFailed, err, "index %q", docID))
 		}
 		sectionsN += len(sections)
 		docs = append(docs, doc)
+		note(ctx, "info", "parse %s (%d sections, %d bytes)", rel, len(sections), len(content))
 	}
 	if err := s.store.ReplaceDocuments(ctx, k.ID, docs); err != nil {
-		return SyncResult{}, Wrap(ErrIndexFailed, err, "replace documents for %q", k.ID)
+		return fail(k.ID, Wrap(ErrIndexFailed, err, "replace documents for %q", k.ID))
 	}
 	all := sha256.Sum256([]byte(digest.String()))
 	checksum := hex.EncodeToString(all[:])
@@ -349,11 +384,12 @@ func (s *Service) Sync(ctx context.Context, knowledgeID string) (SyncResult, err
 	k.Documents = len(docs)
 	k.UpdatedAt = s.now()
 	if err := s.store.SaveKnowledge(ctx, *k); err != nil {
-		return SyncResult{}, Wrap(ErrIndexFailed, err, "record revision for %q", k.ID)
+		return fail(k.ID, Wrap(ErrIndexFailed, err, "record revision for %q", k.ID))
 	}
+	note(ctx, "info", "done status=%s documents=%d sections=%d revision=%s", status, len(docs), sectionsN, k.Revision)
 	return SyncResult{
 		KnowledgeID: k.ID, Status: status, Revision: k.Revision, Checksum: checksum,
-		Documents: len(docs), Sections: sectionsN,
+		Documents: len(docs), Sections: sectionsN, Logs: lg.entries(),
 	}, nil
 }
 

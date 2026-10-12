@@ -34,6 +34,9 @@ func TestRegisterSyncBindSearch(t *testing.T) {
 	if err != nil || sync.Status != SyncIndexed || sync.Documents != 2 || sync.Sections < 1 {
 		t.Fatalf("sync = %+v, %v", sync, err)
 	}
+	if !syncLogHas(sync.Logs, "listed 2 documents") || !syncLogHas(sync.Logs, "done status=indexed") {
+		t.Fatalf("sync logs = %+v", sync.Logs)
+	}
 	again, err := svc.Sync(context.Background(), k.ID)
 	if err != nil || again.Status != SyncUnchanged || again.Checksum != sync.Checksum {
 		t.Fatalf("re-sync = %+v, %v", again, err)
@@ -44,7 +47,7 @@ func TestRegisterSyncBindSearch(t *testing.T) {
 	if err != nil || len(hits) != 0 {
 		t.Fatalf("unbound search = %+v, %v", hits, err)
 	}
-	if err := svc.Bind(context.Background(), k.ID, projA); err != nil {
+	if _, err := svc.Bind(context.Background(), k.ID, projA); err != nil {
 		t.Fatal(err)
 	}
 	hits, err = svc.Search(context.Background(), SearchRequest{Entity: projA, Query: "heartbeat"})
@@ -71,7 +74,7 @@ func TestRegisterSyncBindSearch(t *testing.T) {
 	if len(listed[0].Bindings) != 1 || listed[0].Bindings[0] != projA {
 		t.Fatalf("list bindings = %+v", listed[0].Bindings)
 	}
-	if err := svc.Bind(context.Background(), k.ID, ContextEntity{Type: EntityOrganization, ID: "org-1"}); err != nil {
+	if _, err := svc.Bind(context.Background(), k.ID, ContextEntity{Type: EntityOrganization, ID: "org-1"}); err != nil {
 		t.Fatal(err)
 	}
 	listed, err = svc.ListForEntity(context.Background(), ContextEntity{Type: EntityOrganization, ID: "org-1"})
@@ -104,8 +107,12 @@ func TestGitCloneOnBind(t *testing.T) {
 	}
 
 	proj := ContextEntity{Type: EntityProject, ID: "project-git"}
-	if err := svc.Bind(context.Background(), k.ID, proj); err != nil {
+	synced, err := svc.Bind(context.Background(), k.ID, proj)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if synced == nil || !syncLogHas(synced.Logs, "git clone") || !syncLogHas(synced.Logs, "parse ") {
+		t.Fatalf("bind sync logs = %+v", synced)
 	}
 	if _, err := os.Stat(filepath.Join(workTreeDir(k.ID), ".git")); err != nil {
 		t.Fatalf("work tree: %v", err)
@@ -204,6 +211,15 @@ func TestGitFileNeedsPath(t *testing.T) {
 	if !IsCode(err, ErrInvalidQuery) {
 		t.Fatalf("missing path = %v", err)
 	}
+}
+
+func syncLogHas(logs []SyncLog, needle string) bool {
+	for _, line := range logs {
+		if strings.Contains(line.Message, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func initGitOrigin(t *testing.T, files map[string]string) string {

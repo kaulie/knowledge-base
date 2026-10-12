@@ -109,7 +109,7 @@ GET    /dashboard
 
 `source.location` 或 `source.repository` 是仓库地址（必填），`source.ref` 可选。绑定（或带 `bind` 的登记）会 clone 到 `KNOWLEDGE_BASE_DATA/repos/{knowledge_id}`（默认 runtime `backend/data`），再按 `git ls-tree` 解析跟踪文件。不是本机已有 checkout，也不是 `git-local`。
 
-`sync` 回 `{status: indexed|unchanged, revision, checksum, documents, sections}`。源未变（checksum + revision）不重建。源码仓库的 `sync` 会 fetch 后再建索引。
+`sync` 回 `{status: indexed|unchanged, revision, checksum, documents, sections, logs}`。`logs` 是逐步过程（clone / fetch / 列举 / 解析每个文件 / 结束），维护页同步后以日志面板展示，进程日志里也有同样一行。失败时错误体同样带 `logs`。源未变（checksum + revision）不重建。源码仓库的 `sync` 会 fetch 后再建索引。源码仓库的 bind 会先 sync，响应里带 `sync.logs`。
 
 ## 读路径（给 Autonomy）
 
