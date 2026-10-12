@@ -156,10 +156,28 @@ func gitRemote(src Source) string {
 	return strings.TrimSpace(src.Location)
 }
 
+// gitPathPrefix is a path from the repository root. Leading and trailing
+// slashes are optional: "docs/x.md" and "/docs/x.md" are the same.
 func gitPathPrefix(path string) string {
 	p := strings.TrimSpace(path)
+	p = strings.ReplaceAll(p, "\\", "/")
 	p = strings.Trim(p, "/")
+	for strings.Contains(p, "//") {
+		p = strings.ReplaceAll(p, "//", "/")
+	}
 	return p
+}
+
+func validRepoRelPath(p string) bool {
+	if p == "" {
+		return true
+	}
+	for _, part := range strings.Split(p, "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 func suffixOf(rel string) string {

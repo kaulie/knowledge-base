@@ -89,7 +89,7 @@ GET    /dashboard
 }
 ```
 
-源码仓库：
+源码仓库必须填 **git 仓库地址**。仓库内 path 从**仓库根目录**写起，不是本机路径。前导 `/` 可有可无：`docs/runtime.md` 与 `/docs/runtime.md` 相同，登记后统一存成无前导斜杠。空 path = 整棵树；`shape: file` 必须写到具体文件。
 
 ```json
 {
@@ -97,13 +97,17 @@ GET    /dashboard
   "kind": "source_code_repository",
   "provider": "git",
   "shape": "directory",
-  "source": {"location": "git@github.com:kaulie/autonomy.git", "ref": "main"},
+  "source": {
+    "location": "git@github.com:kaulie/autonomy.git",
+    "ref": "main",
+    "path": "docs"
+  },
   "suffixes": ["md"],
   "bind": {"type": "project", "id": "749a0238"}
 }
 ```
 
-`source_code_repository` / `git` 的 `source.location`（或 `source.repository`）是 clone URL，`source.ref` 可选。绑定（或带 `bind` 的登记）会 clone 到 `KNOWLEDGE_BASE_DATA/repos/{knowledge_id}`（默认 runtime `backend/data`），再按 `git ls-tree` 解析跟踪文件。不是本机已有 checkout，也不是 `git-local`。
+`source.location` 或 `source.repository` 是仓库地址（必填），`source.ref` 可选。绑定（或带 `bind` 的登记）会 clone 到 `KNOWLEDGE_BASE_DATA/repos/{knowledge_id}`（默认 runtime `backend/data`），再按 `git ls-tree` 解析跟踪文件。不是本机已有 checkout，也不是 `git-local`。
 
 `sync` 回 `{status: indexed|unchanged, revision, checksum, documents, sections}`。源未变（checksum + revision）不重建。源码仓库的 `sync` 会 fetch 后再建索引。
 

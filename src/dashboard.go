@@ -143,7 +143,11 @@ const dashboardHTML = `<!DOCTYPE html>
       <label for="f-ref">ref <span class="hint">(branch, tag, or commit; empty = default)</span></label>
       <input type="text" id="f-ref" placeholder="main">
     </div>
-    <div class="only-file needs-provider" id="f-path-wrap"><label for="f-path">path <span class="hint">(inside the repository or location)</span></label><input type="text" id="f-path" placeholder="docs/runtime.md"></div>
+    <div class="only-file needs-provider" id="f-path-wrap">
+      <label for="f-path" id="f-path-label">path</label>
+      <input type="text" id="f-path" placeholder="docs/runtime.md">
+      <div class="hint" id="f-path-hint"></div>
+    </div>
     <div class="needs-provider"><label class="check"><input type="checkbox" id="f-bind" checked> bind to the entity above</label></div>
     <div class="needs-provider"><label class="check"><input type="checkbox" id="f-sync" checked> sync after register</label></div>
   </div>
@@ -262,14 +266,20 @@ const KIND_HINT = {
     dirLoc: "directory path",
     filePh: "/path/to/doc.md",
     dirPh: "/path/to/docs",
+    pathLabel: "path",
+    pathHint: "Optional path inside the location.",
+    pathPh: "",
   },
   source_code_repository: {
-    file: "Bind clones the repository, then reads one tracked file.",
-    dir: "Bind clones the repository, then parses the git tree.",
-    fileLoc: "git URL",
-    dirLoc: "git URL",
+    file: "Bind clones the git repository, then reads one tracked file.",
+    dir: "Bind clones the git repository, then parses the git tree.",
+    fileLoc: "git repository",
+    dirLoc: "git repository",
     filePh: "git@host:org/repo.git",
     dirPh: "git@host:org/repo.git",
+    pathLabel: "path from repository root",
+    pathHint: "From the repo root, not a host path. Leading slash is optional: docs/x.md and /docs/x.md are the same. Empty directory = whole tree.",
+    pathPh: "docs/runtime.md",
   },
   cloud: {
     file: "No cloud provider is implemented yet.",
@@ -278,6 +288,9 @@ const KIND_HINT = {
     dirLoc: "prefix",
     filePh: "",
     dirPh: "",
+    pathLabel: "path",
+    pathHint: "",
+    pathPh: "",
   },
 };
 
@@ -313,7 +326,7 @@ function applyKind() {
   const copy = KIND_HINT[kind] || KIND_HINT.filesystem;
   $("f-provider-hint").textContent = list.length
     ? (kind === "source_code_repository"
-        ? "Implemented: git. Bind clones, then parses the work tree."
+        ? "Git repository address is required. Bind clones it, then reads path from the repo root."
         : "A path on the runtime host.")
     : copy.dir;
   $("register").classList.toggle("git", kind === "source_code_repository");
@@ -332,6 +345,9 @@ function applyShape() {
   $("f-dir-hint").textContent = copy.dir;
   $("f-location-label").textContent = kind === "directory" ? copy.dirLoc : copy.fileLoc;
   $("f-location").placeholder = kind === "directory" ? copy.dirPh : copy.filePh;
+  $("f-path-label").textContent = copy.pathLabel || "path";
+  $("f-path-hint").textContent = copy.pathHint || "";
+  $("f-path").placeholder = copy.pathPh || "";
 }
 
 document.querySelectorAll('input[name="f-kind"]').forEach(function (el) { el.addEventListener("change", applyKind); });
