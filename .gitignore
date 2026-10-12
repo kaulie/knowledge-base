@@ -28,6 +28,12 @@ go.work.sum
 # env file
 .env
 
+# swag / 发版产物（契约由注解生成，不入库）
+docs/swagger.json
+docs/docs.go
+docs/swagger.yaml
+outputs/
+
 # Editor/IDE
 # .idea/
 # .vscode/
