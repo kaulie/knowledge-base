@@ -43,6 +43,9 @@ const dashboardHTML = `<!DOCTYPE html>
   form.no-provider .needs-provider { opacity: .5; pointer-events: none; }
   .custom-type { display: none; }
   .show-custom .custom-type { display: block; }
+  #f-id-select { display: none; }
+  .use-catalog #f-id { display: none; }
+  .use-catalog #f-id-select { display: block; flex: 2; min-width: 220px; }
   .msg { margin: 10px 0; padding: 8px 10px; border-radius: 6px; display: none; white-space: pre-wrap; }
   .msg.ok { display: block; background: #e6f4ea; color: #1a7f37; }
   .msg.err { display: block; background: #fde8e8; color: #b42318; }
@@ -77,6 +80,7 @@ const dashboardHTML = `<!DOCTYPE html>
     </select>
     <input type="text" id="f-type-custom" class="custom-type" placeholder="custom type">
     <label for="f-id" style="margin:0">id</label>
+    <select id="f-id-select"></select>
     <input type="text" id="f-id" placeholder="entity id">
     <button type="button" id="reload">Load</button>
   </div>
@@ -186,7 +190,12 @@ function entityType() {
   return picked;
 }
 
-function entityId() { return $("f-id").value.trim(); }
+function entityId() {
+  if ($("entity-bar").classList.contains("use-catalog")) {
+    return $("f-id-select").value.trim();
+  }
+  return $("f-id").value.trim();
+}
 
 function currentEntity() {
   const typ = entityType();
@@ -200,8 +209,36 @@ function scope() {
   return picked ? picked.value : "all";
 }
 
+let catalog = { project: [], projectAvailable: false };
+
+function fillIdSelect(items) {
+  const sel = $("f-id-select");
+  const prev = sel.value;
+  sel.innerHTML = items.map(function (e) {
+    const label = e.name ? (e.name + " · " + e.id) : e.id;
+    return '<option value="' + esc(e.id) + '">' + esc(label) + "</option>";
+  }).join("");
+  if (prev && items.some(function (e) { return e.id === prev; })) sel.value = prev;
+}
+
 function applyType() {
-  $("entity-bar").classList.toggle("show-custom", $("f-type").value === "_other");
+  const typ = $("f-type").value;
+  $("entity-bar").classList.toggle("show-custom", typ === "_other");
+  const useCatalog = typ === "project" && catalog.projectAvailable;
+  $("entity-bar").classList.toggle("use-catalog", useCatalog);
+  if (useCatalog) fillIdSelect(catalog.project);
+}
+
+async function loadCatalog() {
+  try {
+    const out = await api("GET", "/api/catalog/entities/project");
+    catalog.project = (out && out.entities) || [];
+    catalog.projectAvailable = !!(out && out.available);
+  } catch (e) {
+    catalog.project = [];
+    catalog.projectAvailable = false;
+  }
+  applyType();
 }
 
 const KIND_ORDER = ["filesystem", "source_code_repository", "cloud"];
@@ -514,7 +551,8 @@ $("results").addEventListener("click", async function (event) {
 
 $("reload").addEventListener("click", load);
 $("f-id").addEventListener("keydown", function (event) { if (event.key === "Enter") load(); });
-loadBackends().then(load);
+$("f-id-select").addEventListener("change", load);
+loadCatalog().then(loadBackends).then(load);
 </script>
 </body>
 </html>

@@ -35,7 +35,7 @@ go run ./cmd/knowledge-based
 
 V1 索引在进程内存里，重启即空。持久化（postgres）与远程连接器后加。
 
-维护页：`GET /` 或 `GET /dashboard`。按 CONTEXT entity `{type, id}` 登记、绑定、同步、检索。
+维护页：`GET /` 或 `GET /dashboard`。按 CONTEXT entity `{type, id}` 登记、绑定、同步、检索。选 `project` 时项目列表来自 web-cursor `GET /api/projects`（本服务只代理，`PROJECTS_API_URL`，默认 `http://127.0.0.1:4211`），不用手填。
 
 ## 服务中心与部署
 
@@ -69,6 +69,7 @@ PUT    /api/knowledge/{id}/bindings/{entityType}/{entityID}
 DELETE /api/knowledge/{id}/bindings/{entityType}/{entityID}
 GET    /api/knowledge/{id}/bindings
 GET    /api/backends
+GET    /api/catalog/entities/{entityType}
 GET    /health
 GET    /
 GET    /dashboard

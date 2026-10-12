@@ -9,14 +9,15 @@ import (
 )
 
 type Server struct {
-	svc *Service
+	svc     *Service
+	catalog *Catalog
 }
 
 func NewServer(svc *Service) *Server {
 	if svc == nil {
 		svc = NewService(nil)
 	}
-	return &Server{svc: svc}
+	return &Server{svc: svc, catalog: NewCatalog()}
 }
 
 type httpRoute struct {
@@ -29,6 +30,7 @@ func (s *Server) routes() []httpRoute {
 		{"GET /health", s.handleHealth},
 		{"GET /healthz", s.handleHealthAlias},
 		{"GET /api/backends", s.handleBackends},
+		{"GET /api/catalog/entities/{entityType}", s.handleCatalog},
 		{"POST /api/knowledge", s.handleRegister},
 		{"GET /api/knowledge", s.handleList},
 		{"GET /api/knowledge/{id}", s.handleGet},
@@ -103,6 +105,16 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 // @Router   /healthz [get]
 func (s *Server) handleHealthAlias(w http.ResponseWriter, r *http.Request) {
 	s.handleHealth(w, r)
+}
+
+// @Summary  某类 CONTEXT entity 的可选项（给维护页）
+// @Tags     catalog
+// @Produce  json
+// @Param    entityType  path  string  true  "entity type"
+// @Success  200  {object}  CatalogList
+// @Router   /api/catalog/entities/{entityType} [get]
+func (s *Server) handleCatalog(w http.ResponseWriter, req *http.Request) {
+	writeJSON(w, http.StatusOK, s.catalog.List(req.Context(), req.PathValue("entityType")))
 }
 
 // @Summary  已实现的 kind+provider
