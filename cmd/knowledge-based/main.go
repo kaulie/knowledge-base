@@ -37,8 +37,14 @@ const defaultPort = "4360"
 
 func main() {
 	addr := listenAddr()
-	srv := kb.NewServer(kb.NewService(kb.NewMemoryStore()))
-	log.Printf("knowledge-base %s listening on %s", version, addr)
+	store, err := kb.OpenConfiguredStore()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "knowledge-base postgres: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() { _ = store.Close() }()
+	srv := kb.NewServer(kb.NewService(store))
+	log.Printf("knowledge-base %s listening on %s store=postgres", version, addr)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
