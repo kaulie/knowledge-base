@@ -100,6 +100,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (Knowledge,
 			return Knowledge{}, Wrap(ErrIndexFailed, err, "bind %q to %s", k.ID, entity.Key())
 		}
 	}
+	s.attachBindings(ctx, &k)
 	return k, nil
 }
 
@@ -111,6 +112,7 @@ func (s *Service) Get(ctx context.Context, id string) (*Knowledge, error) {
 	if k == nil {
 		return nil, Errorf(ErrNotFound, "knowledge %q is not registered", id)
 	}
+	s.attachBindings(ctx, k)
 	return k, nil
 }
 
@@ -122,7 +124,26 @@ func (s *Service) List(ctx context.Context) ([]Knowledge, error) {
 	if out == nil {
 		out = []Knowledge{}
 	}
+	s.attachBindingsAll(ctx, out)
 	return out, nil
+}
+
+func (s *Service) attachBindings(ctx context.Context, k *Knowledge) {
+	if k == nil {
+		return
+	}
+	ents, err := s.store.BindingsByKnowledge(ctx, k.ID)
+	if err != nil || ents == nil {
+		k.Bindings = []ContextEntity{}
+		return
+	}
+	k.Bindings = ents
+}
+
+func (s *Service) attachBindingsAll(ctx context.Context, items []Knowledge) {
+	for i := range items {
+		s.attachBindings(ctx, &items[i])
+	}
 }
 
 func (s *Service) Delete(ctx context.Context, id string) error {
@@ -183,6 +204,7 @@ func (s *Service) ListForEntity(ctx context.Context, entity ContextEntity) ([]Kn
 			out = append(out, *k)
 		}
 	}
+	s.attachBindingsAll(ctx, out)
 	return out, nil
 }
 

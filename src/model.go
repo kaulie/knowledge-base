@@ -64,6 +64,7 @@ type Knowledge struct {
 	Revision  string            `json:"revision,omitempty"`
 	Checksum  string            `json:"checksum,omitempty"`
 	Documents int               `json:"documents,omitempty"`
+	Bindings  []ContextEntity   `json:"bindings,omitempty"`
 	CreatedAt time.Time         `json:"created_at"`
 	UpdatedAt time.Time         `json:"updated_at"`
 }
