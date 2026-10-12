@@ -121,8 +121,8 @@ GET    /search
 ```
 GET /api/contexts                                     # 已绑定 entity 清单
 GET /api/contexts/{entityType}/{entityID}/browse      # 该 entity 下已索引文件与标题
-GET /api/contexts/{entityType}/{entityID}/knowledge   # 等价 context.list
-GET /api/contexts/{entityType}/{entityID}/search?q=   # 等价 context.search
+GET /api/contexts/{entityType}/{entityID}/knowledge   # 等价 context.list（含 files：已索引路径）
+GET /api/contexts/{entityType}/{entityID}/search?q=   # 等价 context.search（文件名是路径查找，不是把 AGENT.md 拆成 agent + md）
 GET /api/sections/{sectionID}                         # 等价 context.get
 ```
 

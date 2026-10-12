@@ -224,7 +224,11 @@ func (m *MemoryStore) GetSection(_ context.Context, id string) (*Section, error)
 }
 
 func (m *MemoryStore) Search(_ context.Context, req SearchRequest, knowledgeIDs []string) ([]SearchResult, error) {
-	terms := queryTerms(req.Query)
+	q := parseQuery(req.Query)
+	if q.empty() {
+		return []SearchResult{}, nil
+	}
+	terms := q.terms()
 	allow := map[string]bool{}
 	for _, id := range knowledgeIDs {
 		allow[id] = true
@@ -239,7 +243,7 @@ func (m *MemoryStore) Search(_ context.Context, req SearchRequest, knowledgeIDs 
 		k := m.knowledge[kid]
 		for _, d := range docs {
 			for _, s := range m.sections[d.ID] {
-				score := sectionScore(s, terms)
+				score := sectionScore(s, d.Name, d.Path, q)
 				if score <= 0 {
 					continue
 				}

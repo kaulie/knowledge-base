@@ -71,6 +71,9 @@ func TestRegisterSyncBindSearch(t *testing.T) {
 	if err != nil || len(listed) != 1 || listed[0].ID != k.ID {
 		t.Fatalf("list entity = %+v, %v", listed, err)
 	}
+	if !listedFilesContain(listed[0].Files, "readme.md") || !listedFilesContain(listed[0].Files, "docs/runtime.md") {
+		t.Fatalf("list files = %v, want indexed paths so a planner can see AGENT.md is missing", listed[0].Files)
+	}
 	ctxs, err := svc.ListContexts(context.Background())
 	if err != nil || len(ctxs) != 1 || ctxs[0].Type != EntityProject || ctxs[0].ID != "project-a" || ctxs[0].Documents < 1 {
 		t.Fatalf("list contexts = %+v, %v", ctxs, err)
@@ -301,4 +304,58 @@ func TestUnimplementedProvider(t *testing.T) {
 	}); !IsCode(err, ErrInvalidQuery) {
 		t.Fatalf("git-local = %v", err)
 	}
+}
+
+func TestSearchFilenameIsAPathLookup(t *testing.T) {
+	svc := NewService(NewMemoryStore())
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "docs", "project-map"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "AGENT.md"), []byte("# Agent guide\n\nread project_map next\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "docs", "project-map", "BOUNDARIES.md"), []byte("# Boundaries\n\n## agent: brain\n\ncan_modify home_brain.py\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	k, err := svc.Register(context.Background(), RegisterRequest{
+		Name: "repo", Kind: KindFilesystem, Provider: ProviderLocal,
+		Shape: ShapeDirectory, Source: Source{Location: root},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Sync(context.Background(), k.ID); err != nil {
+		t.Fatal(err)
+	}
+	proj := ContextEntity{Type: EntityProject, ID: "project-brain"}
+	if _, err := svc.Bind(context.Background(), k.ID, proj); err != nil {
+		t.Fatal(err)
+	}
+
+	hits, err := svc.Search(context.Background(), SearchRequest{Entity: proj, Query: "AGENT.md"})
+	if err != nil || len(hits) == 0 {
+		t.Fatalf("AGENT.md = %+v %v", hits, err)
+	}
+	if hits[0].DocumentName != "AGENT.md" {
+		t.Fatalf("top = %+v, want AGENT.md not a heading that contains the word agent", hits[0])
+	}
+
+	py, err := svc.Search(context.Background(), SearchRequest{Entity: proj, Query: "home_brain.py"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(py) != 0 {
+		t.Fatalf("home_brain.py = %+v, want empty: the file is not indexed, a heading about brain is not that file", py)
+	}
+}
+
+func listedFilesContain(files []string, want string) bool {
+	want = filepath.ToSlash(want)
+	for _, f := range files {
+		if filepath.ToSlash(f) == want {
+			return true
+		}
+	}
+	return false
 }

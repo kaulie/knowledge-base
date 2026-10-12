@@ -550,8 +550,8 @@ func (s *PostgresStore) Search(ctx context.Context, req SearchRequest, knowledge
 	if len(knowledgeIDs) == 0 {
 		return []SearchResult{}, nil
 	}
-	terms := queryTerms(req.Query)
-	if len(terms) == 0 {
+	q := parseQuery(req.Query)
+	if q.empty() {
 		return []SearchResult{}, nil
 	}
 	limit := req.Limit
@@ -561,25 +561,57 @@ func (s *PostgresStore) Search(ctx context.Context, req SearchRequest, knowledge
 	if limit > MaxSearchLimit {
 		limit = MaxSearchLimit
 	}
-	tsq := strings.Join(terms, " | ")
-	rows, err := s.db.QueryContext(ctx, `
+
+	args := make([]any, 0, 6)
+	n := 1
+	scoreParts := []string{"0::float8"}
+	var filters []string
+	if len(q.Words) > 0 {
+		tsq := strings.Join(q.Words, " | ")
+		args = append(args, tsq)
+		w := n
+		n++
+		filters = append(filters, fmt.Sprintf("s.search @@ to_tsquery('simple', $%d)", w))
+		scoreParts = append(scoreParts,
+			fmt.Sprintf("ts_rank(s.search, to_tsquery('simple', $%d))", w),
+			fmt.Sprintf("(CASE WHEN to_tsvector('simple', s.heading) @@ to_tsquery('simple', $%d) THEN 1 ELSE 0 END)", w),
+		)
+	}
+	if len(q.Files) > 0 {
+		args = append(args, q.Files)
+		f := n
+		n++
+		filters = append(filters, fmt.Sprintf(
+			`EXISTS (SELECT 1 FROM unnest($%d::text[]) AS f(name) WHERE strpos(lower(d.name), f.name) > 0 OR strpos(lower(coalesce(d.path, '')), f.name) > 0)`,
+			f))
+		scoreParts = append(scoreParts, fmt.Sprintf(
+			`(CASE WHEN lower(regexp_replace(d.name, '.*/', '')) = ANY($%d) OR lower(regexp_replace(coalesce(d.path, ''), '.*/', '')) = ANY($%d) THEN 12 + (CASE WHEN s.ord <= 1 THEN 2 ELSE 0 END) WHEN EXISTS (SELECT 1 FROM unnest($%d::text[]) AS f(name) WHERE strpos(lower(d.name), f.name) > 0 OR strpos(lower(coalesce(d.path, '')), f.name) > 0) THEN 8 ELSE 0 END)`,
+			f, f, f))
+	}
+	args = append(args, knowledgeIDs)
+	kid := n
+	n++
+	args = append(args, limit)
+	lim := n
+	sqlText := fmt.Sprintf(`
 SELECT s.id, s.document_id, s.knowledge_id, s.heading, s.content,
        d.name, COALESCE(NULLIF(d.revision, ''), k.revision),
-       ts_rank(s.search, to_tsquery('simple', $1))
-         + CASE WHEN to_tsvector('simple', s.heading) @@ to_tsquery('simple', $1) THEN 1 ELSE 0 END
+       %s
 FROM sections s
 JOIN documents d ON d.id = s.document_id
 JOIN knowledge k ON k.id = s.knowledge_id
-WHERE s.knowledge_id = ANY($2)
-  AND s.search @@ to_tsquery('simple', $1)
+WHERE s.knowledge_id = ANY($%d)
+  AND (%s)
 ORDER BY 8 DESC, d.name ASC, s.id ASC
-LIMIT $3
-`, tsq, knowledgeIDs, limit)
+LIMIT $%d
+`, strings.Join(scoreParts, " + "), kid, strings.Join(filters, " OR "), lim)
+	rows, err := s.db.QueryContext(ctx, sqlText, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := []SearchResult{}
+	terms := q.terms()
 	for rows.Next() {
 		var r SearchResult
 		if err := rows.Scan(&r.SectionID, &r.DocumentID, &r.KnowledgeID, &r.Heading, &r.Snippet, &r.DocumentName, &r.Revision, &r.Score); err != nil {

@@ -64,6 +64,10 @@ type Knowledge struct {
 	Revision  string            `json:"revision,omitempty"`
 	Checksum  string            `json:"checksum,omitempty"`
 	Documents int               `json:"documents,omitempty"`
+	// Files is the indexed document paths for this source (context.list).
+	// Capped; see maxListedFiles. Agents use it to see whether AGENT.md exists
+	// before searching headings that happen to contain the word "agent".
+	Files     []string          `json:"files,omitempty"`
 	Bindings  []ContextEntity   `json:"bindings,omitempty"`
 	LastSync  *SyncResult       `json:"last_sync,omitempty"`
 	CreatedAt time.Time         `json:"created_at"`

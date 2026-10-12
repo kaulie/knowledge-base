@@ -256,7 +256,34 @@ func (s *Service) ListForEntity(ctx context.Context, entity ContextEntity) ([]Kn
 		}
 	}
 	s.attachBindingsAll(ctx, out)
+	s.attachFiles(ctx, out)
 	return out, nil
+}
+
+const maxListedFiles = 100
+
+func (s *Service) attachFiles(ctx context.Context, items []Knowledge) {
+	for i := range items {
+		docs, err := s.store.ListDocuments(ctx, items[i].ID)
+		if err != nil || len(docs) == 0 {
+			continue
+		}
+		n := len(docs)
+		if n > maxListedFiles {
+			n = maxListedFiles
+		}
+		files := make([]string, 0, n)
+		for _, d := range docs[:n] {
+			p := strings.TrimSpace(d.Path)
+			if p == "" {
+				p = d.Name
+			}
+			if p != "" {
+				files = append(files, p)
+			}
+		}
+		items[i].Files = files
+	}
 }
 
 func (s *Service) Documents(ctx context.Context, knowledgeID string) ([]Document, error) {
