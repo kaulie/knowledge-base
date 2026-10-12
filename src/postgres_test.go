@@ -60,6 +60,16 @@ func TestPostgresStoreRegisterSyncBindSearch(t *testing.T) {
 	if err != nil || len(hits) == 0 || hits[0].KnowledgeID != k.ID {
 		t.Fatalf("search = %+v %v", hits, err)
 	}
+	if err := os.WriteFile(root+"/AGENT.md", []byte("# Agent guide\n\nread this first\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Sync(context.Background(), k.ID); err != nil {
+		t.Fatal(err)
+	}
+	named, err := svc.Search(context.Background(), SearchRequest{Entity: proj, Query: "AGENT.md"})
+	if err != nil || len(named) == 0 || named[0].DocumentName != "AGENT.md" {
+		t.Fatalf("filename search = %+v %v", named, err)
+	}
 	sec, err := svc.GetSection(context.Background(), hits[0].SectionID)
 	if err != nil || sec == nil || !strings.Contains(sec.Content, "heartbeat") {
 		t.Fatalf("section = %+v %v", sec, err)

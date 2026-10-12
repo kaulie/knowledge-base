@@ -2,37 +2,125 @@ package kb
 
 import (
 	"math"
+	"path"
 	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
+// parsedQuery splits a search string into filename tokens and ordinary words.
+// "AGENT.md" stays one filename so a heading that contains the word "agent"
+// does not rank as that file. "heartbeat protocol" stays two words.
+type parsedQuery struct {
+	Words []string
+	Files []string
+}
+
+func (q parsedQuery) empty() bool {
+	return len(q.Words) == 0 && len(q.Files) == 0
+}
+
+func (q parsedQuery) terms() []string {
+	out := make([]string, 0, len(q.Files)+len(q.Words))
+	out = append(out, q.Files...)
+	out = append(out, q.Words...)
+	return out
+}
+
 func queryTerms(query string) []string {
-	fields := strings.FieldsFunc(query, func(r rune) bool {
+	return parseQuery(query).terms()
+}
+
+func parseQuery(query string) parsedQuery {
+	seenFile := map[string]bool{}
+	seenWord := map[string]bool{}
+	var q parsedQuery
+	for _, field := range strings.Fields(query) {
+		field = strings.Trim(field, `"'`+"`")
+		if field == "" {
+			continue
+		}
+		lower := strings.ToLower(field)
+		if isFilenameToken(lower) {
+			if !seenFile[lower] {
+				seenFile[lower] = true
+				q.Files = append(q.Files, lower)
+			}
+			continue
+		}
+		for _, t := range splitWords(field) {
+			if seenWord[t] || seenFile[t] {
+				continue
+			}
+			seenWord[t] = true
+			q.Words = append(q.Words, t)
+		}
+	}
+	return q
+}
+
+func isFilenameToken(t string) bool {
+	if t == "" {
+		return false
+	}
+	if strings.ContainsAny(t, `/\`) {
+		return true
+	}
+	dot := strings.LastIndex(t, ".")
+	if dot <= 0 || dot == len(t)-1 {
+		return false
+	}
+	return hasAlnum(t[:dot]) && hasAlnum(t[dot+1:])
+}
+
+func hasAlnum(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func splitWords(field string) []string {
+	parts := strings.FieldsFunc(field, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	})
+	var out []string
 	seen := map[string]bool{}
-	var terms []string
-	for _, f := range fields {
-		t := strings.ToLower(f)
+	for _, p := range parts {
+		t := strings.ToLower(p)
 		if t == "" || seen[t] {
 			continue
 		}
 		seen[t] = true
-		terms = append(terms, t)
+		out = append(out, t)
 	}
-	return terms
+	return out
 }
 
-func sectionScore(s Section, terms []string) float64 {
-	if len(terms) == 0 {
+func sectionScore(s Section, docName, docPath string, q parsedQuery) float64 {
+	if q.empty() {
 		return 0
+	}
+	var score float64
+	for _, f := range q.Files {
+		n := fileMatchScore(docName, docPath, f)
+		if n <= 0 {
+			continue
+		}
+		score += n
+		if s.Order <= 1 {
+			score += 2
+		}
+	}
+	if len(q.Words) == 0 {
+		return score
 	}
 	hay := strings.ToLower(s.Heading + "\n" + s.Path + "\n" + s.Content)
 	heading := strings.ToLower(s.Heading)
-	var score float64
-	for _, t := range terms {
+	for _, t := range q.Words {
 		n := strings.Count(hay, t)
 		if n == 0 {
 			continue
@@ -43,6 +131,24 @@ func sectionScore(s Section, terms []string) float64 {
 		}
 	}
 	return score
+}
+
+func fileMatchScore(docName, docPath, file string) float64 {
+	name := strings.ToLower(strings.TrimSpace(docName))
+	p := strings.ToLower(strings.TrimSpace(docPath))
+	base := func(s string) string {
+		s = strings.ReplaceAll(s, "\\", "/")
+		return path.Base(s)
+	}
+	switch {
+	case name == file || p == file || base(name) == file || base(p) == file:
+		return 12
+	case strings.HasSuffix(name, "/"+file) || strings.HasSuffix(p, "/"+file):
+		return 12
+	case strings.Contains(name, file) || strings.Contains(p, file):
+		return 8
+	}
+	return 0
 }
 
 func snippet(content, heading string, terms []string, width int) string {
