@@ -46,6 +46,8 @@ if [ ! -f "${ENV_FILE}" ]; then
 # 监听端口由 SERVICE_PORT / PORT 决定，不写在这里。
 # 默认绑 127.0.0.1。远程对外时取消下一行注释：
 # KB_BIND=0.0.0.0
+# 维护页选 project 时，从 web-cursor 拉项目列表（不手填）：
+# PROJECTS_API_URL=http://127.0.0.1:4211
 EOF
   chmod 600 "${ENV_FILE}"
   log "已生成 ${ENV_FILE}"

@@ -23,7 +23,8 @@ func TestDashboardIsServed(t *testing.T) {
 
 func TestDashboardIsBuiltOnEntityAPIs(t *testing.T) {
 	for _, want := range []string{
-		`id="f-type"`, `id="f-id"`, `id="f-type-custom"`,
+		`id="f-type"`, `id="f-id"`, `id="f-id-select"`, `id="f-type-custom"`,
+		`function loadCatalog()`, `"/api/catalog/entities/project"`,
 		`value="project"`, `value="organization"`, `value="service"`, `value="environment"`, `value="task"`,
 		`id="f-scope"`, `value="all"`, `value="entity"`,
 		`id="rows"`, `id="f-filter"`, `tr class="group"`,
