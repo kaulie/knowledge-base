@@ -48,6 +48,8 @@ if [ ! -f "${ENV_FILE}" ]; then
 # KB_BIND=0.0.0.0
 # 维护页选 project 时，从 web-cursor 拉项目列表（不手填）：
 # PROJECTS_API_URL=http://127.0.0.1:4211
+# 源码仓库 clone 目录（默认本文件同级的 data/）：
+# KNOWLEDGE_BASE_DATA=
 EOF
   chmod 600 "${ENV_FILE}"
   log "已生成 ${ENV_FILE}"
@@ -57,6 +59,7 @@ fi
 set -a; . "${ENV_FILE}"; set +a
 
 export SERVICE_PORT="${PLATFORM_PORT}"
+export KNOWLEDGE_BASE_DATA="${KNOWLEDGE_BASE_DATA:-${DATA_DIR}}"
 BIND="${KB_BIND:-127.0.0.1}"
 export KNOWLEDGE_BASE_ADDR="${BIND}:${SERVICE_PORT}"
 export APP_VERSION

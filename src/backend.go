@@ -2,26 +2,32 @@ package kb
 
 import (
 	"context"
-	"os/exec"
 	"strings"
 )
+
+// Materialized is a local work tree the indexer can read.
+type Materialized struct {
+	Root     string
+	Revision string
+}
 
 // Backend is one (kind, provider) implementation.
 type Backend interface {
 	Kind() string
 	Provider() string
-	List(ctx context.Context, location string, suffixes []string) ([]ListedFile, error)
+	Materialize(ctx context.Context, k Knowledge) (Materialized, error)
+	List(ctx context.Context, k Knowledge, root string) ([]ListedFile, error)
 }
 
 type backendKey struct{ kind, provider string }
 
 var implemented = map[backendKey]Backend{
-	{KindFilesystem, ProviderLocal}:              filesystemLocal{},
-	{KindSourceCodeRepository, ProviderGitLocal}: gitLocal{},
+	{KindFilesystem, ProviderLocal}:         filesystemLocal{},
+	{KindSourceCodeRepository, ProviderGit}: gitRepo{},
 }
 
 func ImplementedBackends() []Backend {
-	return []Backend{filesystemLocal{}, gitLocal{}}
+	return []Backend{filesystemLocal{}, gitRepo{}}
 }
 
 func ResolveBackend(kind, provider string) (Backend, error) {
@@ -32,7 +38,7 @@ func ResolveBackend(kind, provider string) (Backend, error) {
 	if b, ok := implemented[backendKey{k, p}]; ok {
 		return b, nil
 	}
-	return nil, Errorf(ErrInvalidQuery, "knowledge %s/%s is not implemented (have filesystem/local, source_code_repository/git-local)", k, p)
+	return nil, Errorf(ErrInvalidQuery, "knowledge %s/%s is not implemented (have filesystem/local, source_code_repository/git)", k, p)
 }
 
 func normalizeKindProvider(kind, provider string) (string, string, error) {
@@ -48,7 +54,7 @@ func normalizeKindProvider(kind, provider string) (string, string, error) {
 		}
 	case KindSourceCodeRepository:
 		if p == "" {
-			p = ProviderGitLocal
+			p = ProviderGit
 		}
 	case KindCloud:
 		if p == "" {
@@ -70,47 +76,101 @@ type filesystemLocal struct{}
 func (filesystemLocal) Kind() string     { return KindFilesystem }
 func (filesystemLocal) Provider() string { return ProviderLocal }
 
-func (filesystemLocal) List(_ context.Context, location string, suffixes []string) ([]ListedFile, error) {
-	root := strings.TrimSpace(location)
+func (filesystemLocal) Materialize(_ context.Context, k Knowledge) (Materialized, error) {
+	root := strings.TrimSpace(k.Source.Location)
 	if looksRemote(root) {
+		return Materialized{}, Errorf(ErrInvalidQuery, "filesystem/local location must be a path on this host")
+	}
+	if root == "" {
+		return Materialized{}, Errorf(ErrInvalidQuery, "source.location is required")
+	}
+	return Materialized{Root: root}, nil
+}
+
+func (filesystemLocal) List(_ context.Context, k Knowledge, root string) ([]ListedFile, error) {
+	walk := strings.TrimSpace(root)
+	if k.Shape != ShapeFile {
+		if sub := strings.TrimSpace(k.Source.Path); sub != "" {
+			walk = joinSource(walk, sub)
+		}
+	}
+	if looksRemote(walk) {
 		return nil, Errorf(ErrInvalidQuery, "filesystem/local location must be a path on this host")
 	}
-	files, err := DocumentFiles(root, suffixes)
+	files, err := DocumentFiles(walk, k.Suffixes)
 	if err != nil {
 		return nil, err
+	}
+	return listed(walk, files), nil
+}
+
+type gitRepo struct{}
+
+func (gitRepo) Kind() string     { return KindSourceCodeRepository }
+func (gitRepo) Provider() string { return ProviderGit }
+
+func (gitRepo) Materialize(ctx context.Context, k Knowledge) (Materialized, error) {
+	remote := gitRemote(k.Source)
+	if remote == "" {
+		return Materialized{}, Errorf(ErrInvalidQuery, "source_code_repository/git needs a clone URL in source.location or source.repository")
+	}
+	dest := workTreeDir(k.ID)
+	rev, err := ensureClone(ctx, remote, k.Source.Ref, dest)
+	if err != nil {
+		return Materialized{}, err
+	}
+	return Materialized{Root: dest, Revision: rev}, nil
+}
+
+func (gitRepo) List(ctx context.Context, k Knowledge, root string) ([]ListedFile, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return nil, Errorf(ErrInvalidQuery, "source_code_repository/git has no work tree")
+	}
+	tracked, err := gitTrackedFiles(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	want, err := documentSuffixSet(k.Suffixes)
+	if err != nil {
+		return nil, err
+	}
+	prefix := gitPathPrefix(k.Source.Path)
+	var files []string
+	for _, rel := range tracked {
+		if prefix != "" && rel != prefix && !strings.HasPrefix(rel, prefix+"/") {
+			continue
+		}
+		if !want[suffixOf(rel)] {
+			continue
+		}
+		files = append(files, rel)
 	}
 	return listed(root, files), nil
 }
 
-type gitLocal struct{}
-
-func (gitLocal) Kind() string     { return KindSourceCodeRepository }
-func (gitLocal) Provider() string { return ProviderGitLocal }
-
-func (gitLocal) List(ctx context.Context, location string, suffixes []string) ([]ListedFile, error) {
-	root := strings.TrimSpace(location)
-	if looksRemote(root) {
-		return nil, Errorf(ErrInvalidQuery, "source_code_repository/git-local needs a checkout path")
+func gitRemote(src Source) string {
+	if r := strings.TrimSpace(src.Repository); r != "" {
+		return r
 	}
-	if err := requireGitCheckout(ctx, root); err != nil {
-		return nil, err
-	}
-	files, err := DocumentFiles(root, suffixes)
-	if err != nil {
-		return nil, err
-	}
-	return listed(root, files), nil
+	return strings.TrimSpace(src.Location)
 }
 
-func requireGitCheckout(ctx context.Context, root string) error {
-	if strings.TrimSpace(root) == "" {
-		return Errorf(ErrInvalidQuery, "source_code_repository/git-local location is required")
+func gitPathPrefix(path string) string {
+	p := strings.TrimSpace(path)
+	p = strings.Trim(p, "/")
+	return p
+}
+
+func suffixOf(rel string) string {
+	i := strings.LastIndex(rel, ".")
+	if i < 0 || i == len(rel)-1 {
+		return ""
 	}
-	out, err := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--is-inside-work-tree").Output()
-	if err != nil || strings.TrimSpace(string(out)) != "true" {
-		return Errorf(ErrInvalidQuery, "location %q is not a git checkout", root)
+	if strings.Contains(rel[i+1:], "/") {
+		return ""
 	}
-	return nil
+	return strings.ToLower(rel[i:])
 }
 
 func listed(root string, files []string) []ListedFile {

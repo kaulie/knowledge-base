@@ -40,6 +40,9 @@ const dashboardHTML = `<!DOCTYPE html>
   .shape label.check { padding: 8px 10px; border: 1px solid #d0d5dd; border-radius: 8px; background: #f9fafb; cursor: pointer; }
   .shape input { width: auto; margin: 0; }
   form.dir .only-file, form.file .only-dir { display: none; }
+  form.git.dir #f-path-wrap { display: block; }
+  .only-git { display: none; }
+  form.git .only-git { display: block; }
   form.no-provider .needs-provider { opacity: .5; pointer-events: none; }
   .custom-type { display: none; }
   .show-custom .custom-type { display: block; }
@@ -136,7 +139,11 @@ const dashboardHTML = `<!DOCTYPE html>
       <label for="f-suffixes">suffixes <span class="hint">(optional; empty = all)</span></label>
       <input type="text" id="f-suffixes" placeholder="md, markdown">
     </div>
-    <div class="only-file needs-provider" id="f-path-wrap"><label for="f-path">path <span class="hint">(inside the location, optional)</span></label><input type="text" id="f-path"></div>
+    <div class="only-git needs-provider">
+      <label for="f-ref">ref <span class="hint">(branch, tag, or commit; empty = default)</span></label>
+      <input type="text" id="f-ref" placeholder="main">
+    </div>
+    <div class="only-file needs-provider" id="f-path-wrap"><label for="f-path">path <span class="hint">(inside the repository or location)</span></label><input type="text" id="f-path" placeholder="docs/runtime.md"></div>
     <div class="needs-provider"><label class="check"><input type="checkbox" id="f-bind" checked> bind to the entity above</label></div>
     <div class="needs-provider"><label class="check"><input type="checkbox" id="f-sync" checked> sync after register</label></div>
   </div>
@@ -257,12 +264,12 @@ const KIND_HINT = {
     dirPh: "/path/to/docs",
   },
   source_code_repository: {
-    file: "One file in a local git checkout. Revision is the commit SHA.",
-    dir: "Walk a local git checkout. Must be inside a work tree.",
-    fileLoc: "file path",
-    dirLoc: "checkout or subtree",
-    filePh: "/path/to/repo/docs/runtime.md",
-    dirPh: "/path/to/checkout",
+    file: "Bind clones the repository, then reads one tracked file.",
+    dir: "Bind clones the repository, then parses the git tree.",
+    fileLoc: "git URL",
+    dirLoc: "git URL",
+    filePh: "git@host:org/repo.git",
+    dirPh: "git@host:org/repo.git",
   },
   cloud: {
     file: "No cloud provider is implemented yet.",
@@ -276,7 +283,7 @@ const KIND_HINT = {
 
 let backends = {
   filesystem: ["local"],
-  source_code_repository: ["git-local"],
+  source_code_repository: ["git"],
   cloud: [],
 };
 
@@ -306,9 +313,10 @@ function applyKind() {
   const copy = KIND_HINT[kind] || KIND_HINT.filesystem;
   $("f-provider-hint").textContent = list.length
     ? (kind === "source_code_repository"
-        ? "Implemented: git-local (a checkout on the runtime host)."
+        ? "Implemented: git. Bind clones, then parses the work tree."
         : "A path on the runtime host.")
     : copy.dir;
+  $("register").classList.toggle("git", kind === "source_code_repository");
   $("register").classList.toggle("no-provider", !list.length);
   $("f-register").disabled = !list.length;
   applyShape();
@@ -336,7 +344,14 @@ applyType();
 
 function sourceText(s) {
   if (!s) return "";
-  return [s.location, s.repository, s.path].filter(Boolean).join(" · ");
+  const parts = [];
+  const seen = {};
+  [s.location, s.repository, s.ref, s.path].forEach(function (v) {
+    if (!v || seen[v]) return;
+    seen[v] = true;
+    parts.push(v);
+  });
+  return parts.join(" · ");
 }
 
 function bindingPills(list) {
@@ -451,7 +466,7 @@ $("rows").addEventListener("click", async function (event) {
       await load();
     } else if (delBtn) {
       const id = delBtn.dataset.delete;
-      if (!confirm("Delete source " + id + " and its indexed sections? The files themselves are not touched.")) return;
+      if (!confirm("Delete source " + id + " and its indexed sections? The remote is not touched.")) return;
       await api("DELETE", "/api/knowledge/" + encodeURIComponent(id));
       say("deleted " + id);
       await load();
@@ -475,9 +490,15 @@ $("register").addEventListener("submit", async function (event) {
     shape: kind,
     source: { location: location },
   };
+  if (kb === "source_code_repository") {
+    body.source.repository = location;
+    const ref = $("f-ref").value.trim();
+    if (ref) body.source.ref = ref;
+  }
+  const inside = $("f-path").value.trim();
+  if (inside) body.source.path = inside;
   if (kind === "file") {
     body.name = $("f-name").value.trim();
-    body.source.path = $("f-path").value.trim();
   } else {
     const suffixes = $("f-suffixes").value.split(/[\s,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
     if (suffixes.length) body.suffixes = suffixes;

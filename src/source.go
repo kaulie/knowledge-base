@@ -3,13 +3,15 @@ package kb
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
 
-func loadFile(ctx context.Context, k Knowledge, path string) ([]byte, string, error) {
-	full := joinSource(k.Source.Location, path)
+func loadFile(ctx context.Context, k Knowledge, root, path string) ([]byte, string, error) {
+	full := joinSource(root, path)
+	if full == "" {
+		full = joinSource(k.Source.Location, path)
+	}
 	if full == "" {
 		return nil, "", Errorf(ErrSourceUnavailable, "knowledge %q has no readable location", k.ID)
 	}
@@ -17,7 +19,7 @@ func loadFile(ctx context.Context, k Knowledge, path string) ([]byte, string, er
 	if err != nil {
 		return nil, "", Wrap(ErrSourceUnavailable, err, "read %q", full)
 	}
-	return content, sourceRevision(ctx, k, full), nil
+	return content, sourceRevision(ctx, k, root), nil
 }
 
 func joinSource(location, path string) string {
@@ -35,17 +37,17 @@ func joinSource(location, path string) string {
 	return location
 }
 
-func sourceRevision(ctx context.Context, k Knowledge, file string) string {
-	if k.Kind != KindSourceCodeRepository || k.Provider != ProviderGitLocal {
+func sourceRevision(ctx context.Context, k Knowledge, root string) string {
+	if k.Kind != KindSourceCodeRepository || k.Provider != ProviderGit {
 		return k.Revision
 	}
-	dir := strings.TrimSpace(k.Source.Location)
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		dir = filepath.Dir(file)
+	dir := strings.TrimSpace(root)
+	if dir == "" {
+		dir = workTreeDir(k.ID)
 	}
-	out, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output()
+	rev, err := gitHEAD(ctx, dir)
 	if err != nil {
 		return k.Revision
 	}
-	return strings.TrimSpace(string(out))
+	return rev
 }
