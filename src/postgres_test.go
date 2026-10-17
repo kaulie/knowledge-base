@@ -12,6 +12,12 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+func TestDefaultPostgresDSNTargetsSharedHost(t *testing.T) {
+	if !strings.Contains(DefaultPostgresDSN, "49.234.45.173:5432/knowledge_base") {
+		t.Fatalf("default dsn = %s", DefaultPostgresDSN)
+	}
+}
+
 func TestResolveDatabaseName(t *testing.T) {
 	name, err := resolveDatabaseName("postgres://localhost:5432/knowledge_base?sslmode=disable")
 	if err != nil || name != DefaultDatabase {

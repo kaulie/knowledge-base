@@ -22,8 +22,10 @@ const (
 	EnvDatabaseURL = "DATABASE_URL"
 	// DefaultDatabase is the dedicated database this service creates and uses.
 	DefaultDatabase = "knowledge_base"
-	// DefaultPostgresDSN talks to the local instance autonomy tests also use.
-	DefaultPostgresDSN = "postgres://localhost:5432/knowledge_base?sslmode=disable"
+	// DefaultPostgresDSN is the shared Postgres host, database knowledge_base.
+	// A login and certificate belong in KNOWLEDGE_BASE_POSTGRES_DSN
+	// (scripts/start.sh loads ~/database/knowledge-base/pg.env).
+	DefaultPostgresDSN = "postgres://49.234.45.173:5432/knowledge_base?sslmode=require"
 )
 
 // PostgresStore is Store over PostgreSQL. Schema is created on open.
