@@ -44,8 +44,7 @@ if [ ! -f "${ENV_FILE}" ]; then
   cat > "${ENV_FILE}" <<'EOF'
 # knowledge-base 运行期配置（首次启动自动生成，权限 600，请勿提交到 git）
 # 监听端口由 SERVICE_PORT / PORT 决定，不写在这里。
-# 默认绑 127.0.0.1。远程对外时取消下一行注释：
-# KB_BIND=0.0.0.0
+# 默认绑 0.0.0.0，外部可访问。只本机时在 backend/.env 里设 KB_BIND=127.0.0.1。
 # 维护页选 project 时，从 web-cursor 拉项目列表（不手填）：
 # PROJECTS_API_URL=http://127.0.0.1:4211
 # 源码仓库 clone 目录（默认本文件同级的 data/）：
@@ -73,7 +72,7 @@ fi
 export SERVICE_PORT="${PLATFORM_PORT}"
 export KNOWLEDGE_BASE_DATA="${KNOWLEDGE_BASE_DATA:-${DATA_DIR}}"
 export KNOWLEDGE_BASE_POSTGRES_DSN="${KNOWLEDGE_BASE_POSTGRES_DSN:-postgres://49.234.45.173:5432/knowledge_base?sslmode=require}"
-BIND="${KB_BIND:-127.0.0.1}"
+BIND="${KB_BIND:-0.0.0.0}"
 export KNOWLEDGE_BASE_ADDR="${BIND}:${SERVICE_PORT}"
 export APP_VERSION
 HEALTH_HOST="${BIND}"
