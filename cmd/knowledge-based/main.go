@@ -59,5 +59,5 @@ func listenAddr() string {
 	if port == "" {
 		port = defaultPort
 	}
-	return "127.0.0.1:" + port
+	return "0.0.0.0:" + port
 }
