@@ -50,9 +50,9 @@ if [ ! -f "${ENV_FILE}" ]; then
 # PROJECTS_API_URL=http://127.0.0.1:4211
 # 源码仓库 clone 目录（默认本文件同级的 data/）：
 # KNOWLEDGE_BASE_DATA=
-# 与 autonomy 同一台 Postgres，但用独立库 knowledge_base（启动时若不存在会 CREATE DATABASE）。
-# 不要指向 autonomy 那个库。
-KNOWLEDGE_BASE_POSTGRES_DSN=postgres://localhost:5432/knowledge_base?sslmode=disable
+# 库在 49.234.45.173 的独立库 knowledge_base（角色 knowledge_base 管理）。
+# 连接串放在 ~/database/knowledge-base/pg.env，不写进口令。
+# KNOWLEDGE_BASE_POSTGRES_DSN=
 EOF
   chmod 600 "${ENV_FILE}"
   log "已生成 ${ENV_FILE}"
@@ -61,9 +61,18 @@ fi
 # shellcheck disable=SC1090
 set -a; . "${ENV_FILE}"; set +a
 
+# 口令不进仓库。backend/.env 没写连接串时，用本机这份（权限 600）。
+if [ -z "${KNOWLEDGE_BASE_POSTGRES_DSN:-}" ]; then
+  PG_ENV="${KNOWLEDGE_BASE_PG_ENV:-${HOME}/database/knowledge-base/pg.env}"
+  if [ -f "${PG_ENV}" ]; then
+    # shellcheck disable=SC1090
+    set -a; . "${PG_ENV}"; set +a
+  fi
+fi
+
 export SERVICE_PORT="${PLATFORM_PORT}"
 export KNOWLEDGE_BASE_DATA="${KNOWLEDGE_BASE_DATA:-${DATA_DIR}}"
-export KNOWLEDGE_BASE_POSTGRES_DSN="${KNOWLEDGE_BASE_POSTGRES_DSN:-postgres://localhost:5432/knowledge_base?sslmode=disable}"
+export KNOWLEDGE_BASE_POSTGRES_DSN="${KNOWLEDGE_BASE_POSTGRES_DSN:-postgres://49.234.45.173:5432/knowledge_base?sslmode=require}"
 BIND="${KB_BIND:-127.0.0.1}"
 export KNOWLEDGE_BASE_ADDR="${BIND}:${SERVICE_PORT}"
 export APP_VERSION

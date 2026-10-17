@@ -33,7 +33,7 @@ go run ./cmd/knowledge-based
 # KNOWLEDGE_BASE_ADDR=127.0.0.1:4360
 ```
 
-索引落在 **Postgres**，和 autonomy 可以是同一实例，但用独立库 `knowledge_base`（启动时若不存在会 `CREATE DATABASE`）。连接串：`KNOWLEDGE_BASE_POSTGRES_DSN`，默认 `postgres://localhost:5432/knowledge_base?sslmode=disable`。不要指向 autonomy 那个库。远程连接器后加。
+索引落在 **Postgres** `49.234.45.173` 上的独立库 `knowledge_base`（登录角色同名，管这个库；启动时库不存在会 `CREATE DATABASE`）。不要指向 `autonomy` 那个库。连接串：`KNOWLEDGE_BASE_POSTGRES_DSN`，默认 `postgres://49.234.45.173:5432/knowledge_base?sslmode=require`。口令在 `~/database/knowledge-base/pg.env`，`scripts/start.sh` 在 `backend/.env` 没写连接串时会读它。
 
 维护页：`GET /` 或 `GET /dashboard`。按 CONTEXT entity `{type, id}` 登记、绑定、同步。选 `project` 时项目列表来自 web-cursor `GET /api/projects`（本服务只代理，`PROJECTS_API_URL`，默认 `http://127.0.0.1:4211`），不用手填。
 
